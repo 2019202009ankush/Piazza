@@ -67,6 +67,36 @@ void get_the_particular_packet(int newsocketdes,string FileId,string packetNos)
    l2:
      cout<<"";
 }
+void create_table(int newsocketdes,string FileId,int no_of_col,string column)
+{
+   vector<string>cols=ArrayOfString(col,':');
+   fstream out;
+   out.open("Metadata.txt",ios::out|ios::in|ios::app);
+   out.write(FileId);
+   for(int i=0;i<cols.size();i++)
+   {
+     out.write(cols[i]);
+   }
+   out.write("\n");
+   out.close();
+}
+void put_value(int newsocketdes,string FileId,string columnpair)
+{
+  vector<string>cols=ArrayOfString(columnpair,':');
+   fstream out;
+   out.open("FileId",ios::out|ios::in|ios::app);
+   out.write(FileId);
+   for(int i=0;i<cols.size();i++)
+   {
+     out.write(cols[i]);
+   }
+   out.write("\n");
+   out.close();  
+}
+void get_single_tuple(int newsocketdes,string FileId,string primarykey)
+{
+
+}
 void send_the_packet_vector(int newsocketdes,string FileId)
 {
    // cout<<"in line 326 send the packet vector"<<endl;
@@ -134,14 +164,13 @@ void serverequest(int newsocketdes,string ip,int port)
     string FileId=requestarray[1];
     int no_of_col=stoi(requestarray[2]);
     stirng column_name=requestarray[3];
-    create_table(newsocketdes,FileId,primarykey,column_name);
+    create_table(newsocketdes,FileId,no_of_col,column_name);
    }
    else if(request=="put_value")
    {
     string Filepath=requestarray[1];
-    stirng primarykey=requestarray[2];
-    string columnpair=requestarray[3];
-    put_value(newsocketdes,FileId,primarykey,columnpair);
+    string columnpair=requestarray[2];
+    put_value(newsocketdes,FileId,columnpair);
    }
    else if(request=="del")
    {
