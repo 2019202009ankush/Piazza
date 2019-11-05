@@ -1,15 +1,15 @@
 #include "piazzaHeader.h"
 class Replication_Group{
 public:
-string TR1ip;
-string TR1port;
-string severip;
-string serverport;
-vector<thread> threadVector;
-int threadCount;
-sem_t m;
-unordered_map<string,set<int> >AvailableChunkInfoPerFileBasis;
-unordered_map<string,string>FileIdandFilepathMap;
+static string TR1ip;
+static string TR1port;
+static string severip;
+static string serverport;
+static vector<thread> threadVector;
+static int threadCount;
+static sem_t m;
+static unordered_map<string,set<int> >AvailableChunkInfoPerFileBasis;
+static unordered_map<string,string>FileIdandFilepathMap;
 unordered_map<string,int>download_status;
 Replication_Group(string TR1ip,string TR1port,string severip,string serverport)
 {
@@ -18,7 +18,7 @@ Replication_Group(string TR1ip,string TR1port,string severip,string serverport)
   severip=severip;
   serverport=serverport;
 }
-vector<string>ArrayOfString(string s,char del)
+static vector<string>ArrayOfString(string s,char del)
 {
   stringstream ss(s);
   vector<string>a;
@@ -29,7 +29,7 @@ vector<string>ArrayOfString(string s,char del)
   }
   return a;
 }
-void get_the_particular_packet(int newsocketdes,string FileId,string packetNos)
+static void get_the_particular_packet(int newsocketdes,string FileId,string packetNos)
 {
    // cout<<"in line 361 get_the_particular_packet"<<endl;
    string Filepath=FileIdandFilepathMap[FileId];
@@ -67,37 +67,52 @@ void get_the_particular_packet(int newsocketdes,string FileId,string packetNos)
    l2:
      cout<<"";
 }
-void create_table(int newsocketdes,string FileId,int no_of_col,string column)
+static void create_table(int newsocketdes,string FileId,int no_of_col,string column)
 {
-   vector<string>cols=ArrayOfString(col,':');
+   vector<string>cols=ArrayOfString(column,':');
    fstream out;
    out.open("Metadata.txt",ios::out|ios::in|ios::app);
-   out.write(FileId);
+   out.write(FileId.c_str(),FileId.size());
    for(int i=0;i<cols.size();i++)
    {
-     out.write(cols[i]);
+     out.write(cols[i].c_str(),cols[i].size());
    }
-   out.write("\n");
+   out.write("\n",sizeof(char)*2);
    out.close();
 }
-void put_value(int newsocketdes,string FileId,string columnpair)
+static void put_value(int newsocketdes,string FileId,string columnpair)
 {
   vector<string>cols=ArrayOfString(columnpair,':');
    fstream out;
-   out.open("FileId",ios::out|ios::in|ios::app);
-   out.write(FileId);
+   out.open(FileId.c_str(),ios::out|ios::in|ios::app);
+   out.write(FileId.c_str(),FileId.size());
    for(int i=0;i<cols.size();i++)
    {
-     out.write(cols[i]);
+     out.write(cols[i].c_str(),cols[i].size());
    }
-   out.write("\n");
+   out.write("\n",sizeof(char)*2);
    out.close();  
 }
-void get_single_tuple(int newsocketdes,string FileId,string primarykey)
+static string get_single_tuple(int newsocketdes,string FileId,string primarykey)
 {
-
+  ifstream in(FileId.c_str());
+  string temp;
+  while(getline(in,temp,':'))
+  {
+    if(temp.find(primarykey)!=std::string::npos)
+      break;
+  }
+  return temp;
 }
-void send_the_packet_vector(int newsocketdes,string FileId)
+static string get_single_tuple_value(int newsocketdes,string FileId,string primarykey,string column)
+{
+  cout<<"Not implemented"<<endl;
+}
+static void del(int newsocketdes,string FileId)
+{
+  cout<<"Not Implemented"<<endl;
+}
+static void send_the_packet_vector(int newsocketdes,string FileId)
 {
    // cout<<"in line 326 send the packet vector"<<endl;
    string chunkdetails="";
@@ -121,7 +136,7 @@ void send_the_packet_vector(int newsocketdes,string FileId)
    l2:
      cout<<"";
 }
-void serverequest(int newsocketdes,string ip,int port)
+static void server_request(int newsocketdes)
 {
    l2:
    // cout<<"in line 598"<<endl;
@@ -155,7 +170,7 @@ void serverequest(int newsocketdes,string ip,int port)
    else if(request=="get_single_tuple_value")
    {
     string FileId=requestarray[1];
-    stirng primarykey=requestarray[2];
+    string primarykey=requestarray[2];
     string column=requestarray[3];
     get_single_tuple_value(newsocketdes,FileId,primarykey,column);
    }
@@ -163,12 +178,12 @@ void serverequest(int newsocketdes,string ip,int port)
    {
     string FileId=requestarray[1];
     int no_of_col=stoi(requestarray[2]);
-    stirng column_name=requestarray[3];
+    string column_name=requestarray[3];
     create_table(newsocketdes,FileId,no_of_col,column_name);
    }
    else if(request=="put_value")
    {
-    string Filepath=requestarray[1];
+    string FileId=requestarray[1];
     string columnpair=requestarray[2];
     put_value(newsocketdes,FileId,columnpair);
    }
@@ -185,7 +200,7 @@ void serverequest(int newsocketdes,string ip,int port)
       goto l2;
    }
 }
-void serverpart()
+static void serverpart()
 {
    int socketdes;
    int newsocketdes;
@@ -220,10 +235,10 @@ void serverpart()
   while((newsocketdes=accept(socketdes,(struct sockaddr *)&otheraddr,&size))!=-1)
   {
    // cout<<"Got a connection from another peer "<<endl;
-   string ip=inet_ntoa(otheraddr.sin_addr);
+   string ip=string(inet_ntoa(otheraddr.sin_addr));
    int port=(ntohs(otheraddr.sin_port));
    // cout<<"ip="<<ip<<"port"<<port<<endl;
-   threadVector.push_back(thread(serverequest,newsocketdes,ip,port));
+   threadVector.push_back(thread(server_request,newsocketdes));
    size=sizeof(struct sockaddr);
   }
   vector<thread>:: iterator it;
@@ -240,3 +255,4 @@ void serverpart()
 
 }
 };
+

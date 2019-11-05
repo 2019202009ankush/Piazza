@@ -3,5 +3,7 @@ Primary key
 Identifier
 Is it in memory
 Desc table name
-Get,Put
+Get,Put(/update)
+Make dir
+
 
