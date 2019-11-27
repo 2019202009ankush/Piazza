@@ -7,6 +7,7 @@
 #include<sstream>
 #include<cstring>
 #include "include/rapidjson/document.h"
+#include "include/rapidjson/rapidjson.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -35,12 +36,14 @@ struct clientData
     string password;
     string IPaddr;
     string portnum;
+    bool isActive;
     clientData()
     {
         username='\0';
         password='\0';
         IPaddr='\0';
         portnum='\0';
+        isActive=false;
     }
 };
 
@@ -64,5 +67,13 @@ private:
         coordination_serv coord_info;
 public:
         int alwaysListen();
+        int clientHandle(int fd);
+        int slaveHandle(int fd);
+        int create_user(string username, string password, int sock_fd);
+        int login(string username, string password, int sock_fd);
+        int putData();
+        int getData();
+        int deleteData();
+        int updateData();
 
 };

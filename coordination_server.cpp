@@ -138,11 +138,152 @@ int CCoord_server::alwaysListen()
             //exit(1);
         }
         // JSON parsing
+        cout<<buf<<endl;
         Document document;
         document.Parse(buf);
         string type=document["type"].GetString();
         
+        int ty;
+        if(type=="client")
+        {
+            string sendstr="{\n\t\"status\":\"connected\"\n}";
+            if(send(*new_fd, sendstr.c_str(), sendstr.length(), 0) == -1)
+            perror("send");
+            thread typethread(&CCoord_server::clientHandle, this, *new_fd);
+            typethread.detach();
+        }
+        else if(type=="slave")
+        {
+            //thread typethread(slaveHandle,*new_fd);
+            //typethread.detach();
+        }
+        
     }
+}
+
+int CCoord_server::clientHandle(int fd)
+{
+    char buf[BUFFERSIZE];
+    int numbytes;
+    // First receive
+    Document document;
+    while(1)
+    {
+        if ((numbytes = recv(fd, buf, BUFFERSIZE, 0)) == -1) 
+        {
+            perror("recv");
+            return -1;
+            //exit(1);
+        }
+        string tmp(buf);
+        cout<<tmp<<endl;
+        document.Parse(tmp.c_str());
+        assert(document["purpose"].IsString());
+        string purpose=document["purpose"].GetString();
+        if(purpose=="create_user")
+        {
+            create_user(document["username"].GetString(),document["password"].GetString(), fd);
+        }
+        else if(purpose=="login")
+        {
+            login(document["username"].GetString(),document["password"].GetString(), fd);
+        }
+        else if(purpose=="put")
+        {
+            putData();
+        }
+        else if(purpose=="get")
+        {
+            getData();
+        }
+        else if(purpose=="delete")
+        {
+            deleteData();
+        }
+        else if(purpose=="update")
+        {
+            updateData();
+        }
+    }
+}
+int CCoord_server::slaveHandle(int fd)
+{
+    
+}
+
+int CCoord_server::create_user(string username, string password, int sock_fd)
+{
+    clientData *newClient = new clientData;
+    newClient->username = username;
+    newClient->password = password;
+    //newClient->IPaddr = IPaddr;
+    //newClient->portnum = portnum;
+    newClient->isActive = false;
+
+    std::pair<std::map<string,clientData>::iterator,bool> ret;
+    ret =  clientmap.insert(make_pair(username, *newClient));
+    if (ret.second==false) 
+    {
+        // If element already exists
+        if(send(sock_fd, "exists", strlen("exists"), 0) == -1)
+            perror("send");
+        return 0;
+    }
+    else
+    {
+        if(send(sock_fd, "success", strlen("success"), 0) == -1)
+            perror("send");
+        return 1;
+    }
+}
+
+int CCoord_server::login(string username, string password, int sock_fd)
+{
+    map<string, clientData>:: iterator itr;
+    if((itr = clientmap.find(username)) != clientmap.end())
+    {
+        if(itr->second.password==password)
+        {
+            //itr->second.IPaddr=IPaddr;
+            //itr->second.password=password;
+            itr->second.isActive=true;
+            if(send(sock_fd, "success", strlen("success"), 0) == -1)
+                perror("send");
+            return true;    // User present, might not be active;
+        }
+        else
+        {
+            if(send(sock_fd, "invalid", strlen("invalid"), 0) == -1)
+                perror("send");
+            return false;
+        }
+    } 
+    else
+    {
+        if(send(sock_fd, "failure", strlen("failure"), 0) == -1)
+            perror("send");
+        return false;   // user not registered with tracker
+    }
+}
+
+int CCoord_server::putData()
+{
+
+}
+
+int CCoord_server::getData()
+{
+
+}
+
+int CCoord_server::deleteData()
+{
+
+}
+
+int CCoord_server::updateData()
+{
+
 }
 
 int main()
