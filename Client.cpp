@@ -19,11 +19,14 @@ using namespace rapidjson;
 string create_json_string(vector<pair<string,string>> &data)
 {
     string json_string="{";
-    for(int i=0;i<data.size();i++)
+    int i=0;
+    for(i=0;i<data.size()-1;i++)
     {
         json_string+="\n\t";
-        json_string+="\""+data[i].first+"\":\""+data[i].second+"\"";
+        json_string+="\""+data[i].first+"\":\""+data[i].second+"\",";
     }
+    json_string+="\n\t";
+    json_string+="\""+data[i].first+"\":\""+data[i].second+"\"";
     json_string+="\n}";
     return json_string;
 }
