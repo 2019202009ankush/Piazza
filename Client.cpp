@@ -110,7 +110,7 @@ int login(string key,string value,int sock_fd)
         cout<<"Enter Proper Password"<<endl;
         stat=1;
     }
-    else
+    else if(strcmp(send_data.c_str(),"failure")==0)
     {
         cout<<"Login Failed!!\nNo Such User"<<endl;
         stat=1;
@@ -277,7 +277,7 @@ int main()
         }
         else if(command.compare(0,3,"put")==0)  //put key value
         {
-
+            
         }
         else if(command.compare(0,6,"update")==0)   //update key new_value
         {
@@ -299,3 +299,4 @@ int main()
     /*Logout Function*/
     return 0;
 }
+

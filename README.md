@@ -5,27 +5,27 @@
 
 2. Message Format for Create User
 	{
-		"purpose":"create_user"
-		"username":""
+		"purpose":"create_user",
+		"username":"",
 		"password":""
 	}
 
 3. Login
 	{
-		"purpose":"login"
-		"username":""
+		"purpose":"login",
+		"username":"",
 		"password":""
 	}
 	
 4. Logout
 	{
-		"purpose":"logout"
+		"purpose":"logout",
 		"username":""
 	}
 	
 5. Get
 	{
-		"purpose":"get"
+		"purpose":"get",
 		"key":""
 	}
 	
@@ -41,11 +41,39 @@
 
 8. Delete
 	{
-		"purpose":"delete"
+		"purpose":"delete",
 		"key":""
 	}
 
 9. Delete Response
 	{
 		"value":"success/failure/nexists"
+	}
+
+10. Put
+	{
+		"purpose":"put",
+		"key":"",
+		"value":""
+	}
+	
+11. Update
+	{
+		"purpose":"update",
+		"key":"",
+		"value":""
+	}
+
+12. Value in Put/Update (Nested JSON String)
+	{
+		"col_name":"col_value",
+		"col_name":"col_value",
+		.
+		.
+		.
+	}
+
+13. Put n Update Response
+	{
+		"value":"success/exists/failure"
 	}
