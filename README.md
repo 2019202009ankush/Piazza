@@ -73,7 +73,12 @@
 		.
 	}
 
-13. Put n Update Response
+13. Put Response
 	{
 		"value":"success/exists/failure"
+	}
+	
+14. Update Response
+	{
+		"value":"success/failure"
 	}

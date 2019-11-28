@@ -220,6 +220,59 @@ int delete_data(string key,int sock_fd)
     return 1;
 }
 
+int put_data(int sock_fd,string key,string value)
+{
+    vector<pair<string,string>> command;
+    command.push_back(make_pair("purpose","put"));
+    command.push_back(make_pair("key",key));
+    command.push_back(make_pair("value",value));
+    key = create_json_string(command);
+    while(send_command(sock_fd,key)!=1);
+    while(recv_response(sock_fd,key)!=1);
+    Document document;
+    document.Parse(key.c_str());
+    key = document["value"].GetString();
+    if(strcmp(key.c_str,"success")==0)
+    {
+        cout<<"Tuple Added!!"<<endl;
+        return 1;
+    }
+    else if(strcmp(key.c_str,"exists")==0)
+    {
+        cout<<"Tuple with given key already exists!!"<<endl;
+        return 1;
+    }
+    else if(strcmp(key.c_str,"failure")==0)
+    {
+        cout<<"Error occured while inserting"<<endl;
+        return 1;
+    }
+}
+
+int update_data(int sock_fd,string key,string value)
+{
+    vector<pair<string,string>> command;
+    command.push_back(make_pair("purpose","update"));
+    command.push_back(make_pair("key",key));
+    command.push_back(make_pair("value",value));
+    key = create_json_string(command);
+    while(send_command(sock_fd,key)!=1);
+    while(recv_response(sock_fd,key)!=1);
+    Document document;
+    document.Parse(key.c_str());
+    key = document["value"].GetString();
+    if(strcmp(key.c_str,"success")==0)
+    {
+        cout<<"Tuple Updated!!"<<endl;
+        return 1;
+    }
+    else if(strcmp(key.c_str,"failure")==0)
+    {
+        cout<<"Error occured while updating!!"<<endl;
+        return 1;
+    }
+}
+
 int main()
 {
     string path,ip,command,username,key,value;
@@ -277,11 +330,19 @@ int main()
         }
         else if(command.compare(0,3,"put")==0)  //put key value
         {
-            
+            stringstream get_user(command);
+            getline(get_user, key, ' ');
+            getline(get_user, key, ' ');
+            getline(get_user, value, ' ');
+            while(put_data(sock_fd,key,value)!=1);
         }
         else if(command.compare(0,6,"update")==0)   //update key new_value
         {
-
+            stringstream get_user(command);
+            getline(get_user,key,' ');
+            getline(get_user,key,' ');
+            getline(get_user,value,' ');
+            while(update_data(sock_fd,key,value)!=1);
         }
         else if(command.compare(0,6,"delete")==0)   //delete key
         {
