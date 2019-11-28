@@ -1,24 +1,24 @@
 #include "piazzaHeader.h"
 class Replication_Group{
 public:
-static string TR1ip;
-static string TR1port;
-static string severip;
-static string serverport;
-static vector<thread> threadVector;
-static int threadCount;
-static sem_t m;
-static unordered_map<string,set<int> >AvailableChunkInfoPerFileBasis;
-static unordered_map<string,string>FileIdandFilepathMap;
+ string TR1ip;
+ string TR1port;
+ string severip;
+ string serverport;
+ vector<thread> threadVector;
+ int threadCount;
+ sem_t m;
+ unordered_map<string,set<int> >AvailableChunkInfoPerFileBasis;
+ unordered_map<string,string>FileIdandFilepathMap;
 unordered_map<string,int>download_status;
-Replication_Group(string TR1ip,string TR1port,string severip,string serverport)
+Replication_Group(string aTR1ip,string aTR1port,string aseverip,string aserverport)
 {
-  TR1ip=TR1ip;
-  TR1port=TR1port;
-  severip=severip;
-  serverport=serverport;
+  TR1ip=aTR1ip;
+  TR1port=aTR1port;
+  severip=aseverip;
+  serverport=aserverport;
 }
-static vector<string>ArrayOfString(string s,char del)
+ vector<string>ArrayOfString(string s,char del)
 {
   stringstream ss(s);
   vector<string>a;
@@ -29,7 +29,7 @@ static vector<string>ArrayOfString(string s,char del)
   }
   return a;
 }
-static void get_the_particular_packet(int newsocketdes,string FileId,string packetNos)
+ void get_the_particular_packet(int newsocketdes,string FileId,string packetNos)
 {
    // cout<<"in line 361 get_the_particular_packet"<<endl;
    string Filepath=FileIdandFilepathMap[FileId];
@@ -67,8 +67,10 @@ static void get_the_particular_packet(int newsocketdes,string FileId,string pack
    l2:
      cout<<"";
 }
-static void create_table(int newsocketdes,string FileId,int no_of_col,string column)
+ void create_table(int newsocketdes,string FileId,int no_of_col,string column)
 {
+	cout<<"inline 72"<<endl;
+	cout<<FileId<<" "<<no_of_col<<" "<<column<<endl;
    vector<string>cols=ArrayOfString(column,':');
    fstream out;
    out.open("Metadata.txt",ios::out|ios::in|ios::app);
@@ -80,7 +82,7 @@ static void create_table(int newsocketdes,string FileId,int no_of_col,string col
    out.write("\n",sizeof(char)*2);
    out.close();
 }
-static void put_value(int newsocketdes,string FileId,string columnpair)
+ void put_value(int newsocketdes,string FileId,string columnpair)
 {
   vector<string>cols=ArrayOfString(columnpair,':');
    fstream out;
@@ -93,7 +95,7 @@ static void put_value(int newsocketdes,string FileId,string columnpair)
    out.write("\n",sizeof(char)*2);
    out.close();  
 }
-static string get_single_tuple(int newsocketdes,string FileId,string primarykey)
+ string get_single_tuple(int newsocketdes,string FileId,string primarykey)
 {
   ifstream in(FileId.c_str());
   string temp;
@@ -104,17 +106,17 @@ static string get_single_tuple(int newsocketdes,string FileId,string primarykey)
   }
   return temp;
 }
-static string get_single_tuple_value(int newsocketdes,string FileId,string primarykey,string column)
-{
-  cout<<"Not implemented"<<endl;
-}
-static void del(int newsocketdes,string FileId)
+//  string get_single_tuple_value(int newsocketdes,string FileId,string primarykey,string column)
+// {
+//   cout<<"Not implemented"<<endl;
+// }
+ void del(int newsocketdes,string FileId)
 {
   cout<<"Not Implemented"<<endl;
 }
-static void send_the_packet_vector(int newsocketdes,string FileId)
+ void send_the_packet_vector(int newsocketdes,string FileId)
 {
-   // cout<<"in line 326 send the packet vector"<<endl;
+    cout<<"in line 326 send the packet vector"<<endl;
    string chunkdetails="";
       set<int>:: iterator it;
    for(it=AvailableChunkInfoPerFileBasis[FileId].begin();it!=AvailableChunkInfoPerFileBasis[FileId].end();it++)
@@ -136,17 +138,60 @@ static void send_the_packet_vector(int newsocketdes,string FileId)
    l2:
      cout<<"";
 }
-static void server_request(int newsocketdes)
+ void sendmessage(string mess)
+{
+   cout<<"in line 428 in downloadPiece"<<endl;
+  
+   
+   cout<<endl;
+   
+   int socketdes;
+   int newsocketdes;
+   char buffer[BUFF];
+   struct sockaddr_in trakeraddr;
+  
+   if((socketdes=socket(AF_INET,SOCK_STREAM,0))==-1)
+   {
+      perror("Failed to obtain socket descriptor");
+      exit(1);
+   }
+   trakeraddr.sin_family=AF_INET;
+   trakeraddr.sin_port=htons(stoi(TR1port));
+   //trakeraddr.sin_addr.s_addr=TR1ip;
+   inet_pton(AF_INET,TR1ip.c_str() , &trakeraddr.sin_addr); 
+   bzero(&(trakeraddr.sin_zero),8);
+   if(connect(socketdes,(struct sockaddr *)&trakeraddr,sizeof(struct sockaddr))==-1)
+   {
+      perror("Connect failed");
+      exit(1);
+   }
+   token=mess;
+   // messarr=ArrayOfString(mess,';')
+   //  string token=mess;
+   // token+=";";
+   // token+="sample";
+   // token+=";";
+   // token+="1";
+   // token+=";";
+   // token+="val";
+
+   
+   // cout<<"in line 457 token= "<<token<<endl;
+   // cout<<"in line 534 ipport== 0"<<IPport<<endl;
+   send(socketdes,token.c_str(),strlen(token.c_str()),0);
+   bzero(buffer,sizeof(buffer));
+  }
+ void server_request(int newsocketdes)
 {
    l2:
-   // cout<<"in line 598"<<endl;
+    cout<<"in line 598"<<endl;
 
    char buffer[BUFF];
    bzero(buffer,BUFF);
    read(newsocketdes,buffer,sizeof(buffer));
-   // cout<<"in line 603 buffer="<<buffer<<endl;
+   cout<<"in line 603 buffer="<<buffer<<endl;
    string r=buffer;
-   // cout<<"in line 605 r="<<r<<endl;
+   cout<<"in line 605 r="<<r<<endl;
 
    vector<string> requestarray=ArrayOfString(r,';');
    string request=requestarray[0];
@@ -200,7 +245,7 @@ static void server_request(int newsocketdes)
       goto l2;
    }
 }
-static void serverpart()
+ void serverpart()
 {
    int socketdes;
    int newsocketdes;
@@ -232,13 +277,14 @@ static void serverpart()
 
   }
   size=sizeof(struct sockaddr);
+  cout<<TR1ip<<" "<<TR1port<<" "<<severip<<" "<<serverport<<endl;
   while((newsocketdes=accept(socketdes,(struct sockaddr *)&otheraddr,&size))!=-1)
   {
-   // cout<<"Got a connection from another peer "<<endl;
+    cout<<"Got a connection from another peer "<<endl;
    string ip=string(inet_ntoa(otheraddr.sin_addr));
    int port=(ntohs(otheraddr.sin_port));
-   // cout<<"ip="<<ip<<"port"<<port<<endl;
-   threadVector.push_back(thread(server_request,newsocketdes));
+    cout<<"ip="<<ip<<"port"<<port<<endl;
+   threadVector.push_back(thread(&Replication_Group::server_request,this,newsocketdes));
    size=sizeof(struct sockaddr);
   }
   vector<thread>:: iterator it;
@@ -255,4 +301,3 @@ static void serverpart()
 
 }
 };
-
