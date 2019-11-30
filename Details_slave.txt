@@ -1,0 +1,7 @@
+8000
+8000
+10.42.0.227
+
+1st port is port at which Slave Will Listen
+
+2nd port is where Cordination Server is active
