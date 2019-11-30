@@ -55,7 +55,7 @@ struct clientData
 struct slaveData
 {
     string IPaddr;
-    string portnum;
+    string portnum; //This is Listening Port of SlaveServer
     Fnv32_t hashvalue;
     bool isActive;
     slaveData()
@@ -65,6 +65,7 @@ struct slaveData
         isActive=false;
     }
 };
+
 struct coordination_serv
 {
     string IPaddr;
@@ -106,14 +107,19 @@ public:
         int slaveHandle(string slaveIP, string slavePort, int fd);
         int create_user(string username, string password, int sock_fd);
         int login(string username, string password, int sock_fd);
-        int putData();
-        int getData();
-        int deleteData();
-        int updateData();
+        int putData(string bufstr, int client_fd);
+        int getData(string key, int client_fd);
+        int deleteData(string bufstr, int client_fd);
+        int updateData(string bufstr, int client_fd);
+        int connect_to_slave(slaveData* slave);
+        void put_update_delete_handle(string bufstr, int client_fd);
+        void data_modify_ThreadFn(string bufstr, char* response, int* numbytes1, int fd);
         string create_json_string(vector<pair<string,string>> &data);
         Fnv32_t hashSlave(slaveData* newSlave);
-        void insertBST(bstNode* root,slaveData* newSlave);
+        void insertBST(bstNode** root,slaveData* newSlave);
         bstNode* bst_upperBound(bstNode* root,Fnv32_t val);
         void findPreSuc(bstNode* root, bstNode*& pre, bstNode*& suc, Fnv32_t key);
+        void findSuccessor(bstNode* root, bstNode*& succ, Fnv32_t key);
+        bstNode* findMinimum(bstNode* root)
 
 };

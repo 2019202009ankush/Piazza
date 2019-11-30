@@ -131,6 +131,7 @@ int CCoord_server::alwaysListen()
         char buf[BUFFERSIZE];
         int numbytes;
         // First receive
+        memset(buf,0,BUFFERSIZE);
         if ((numbytes = recv(*new_fd, buf, BUFFERSIZE, 0)) == -1) 
         {
             perror("recv");
@@ -155,7 +156,7 @@ int CCoord_server::alwaysListen()
         else if(type=="slave")
         {
             string slaveIP(s);
-            string slavePort(senderPort);
+            string slavePort = document["port"].GetString();;
             cout<<slaveIP<<" "<<slavePort<<endl;
             thread typethread(&CCoord_server::slaveHandle, this, slaveIP, slavePort, *new_fd);
             typethread.detach();
@@ -194,11 +195,13 @@ int CCoord_server::clientHandle(int fd)
         }
         else if(purpose=="put")
         {
-            putData();
+            string bufstr(buf);
+            putData(bufstr, fd);
         }
         else if(purpose=="get")
         {
-            getData();
+            string bufstr(buf);
+            getData(bufstr, fd);    //passing file desc and command string
         }
         else if(purpose=="delete")
         {
@@ -230,7 +233,7 @@ int CCoord_server::slaveHandle(string slaveIP, string slavePort, int fd)
     newSlave->portnum = slavePort;
     newSlave->hashvalue = hashSlave(newSlave);
     newSlave->isActive = true;
-    insertBST(treeRoot,newSlave);
+    insertBST(&treeRoot,newSlave);
     std::pair<std::map<string,slaveData>::iterator,bool> ret;
     ret =  slavemap.insert(make_pair(newSlave->IPaddr, *newSlave));
     
@@ -239,14 +242,14 @@ int CCoord_server::slaveHandle(string slaveIP, string slavePort, int fd)
         // If element already exists
         string sendstr="{\n\t\"status\":\"connected\"\n}";
         if(send(fd, sendstr.c_str(), sendstr.length(), 0) == -1)
-                perror("send");
+            perror("send");
         return 0;
     }
     else
     {
         string sendstr="{\n\t\"status\":\"connected\"\n}";
         if(send(fd, sendstr.c_str(), sendstr.length(), 0) == -1)
-                perror("send");
+            perror("send");
     }
 
     fcntl(fd, F_SETFL, O_NONBLOCK);
@@ -265,13 +268,13 @@ int CCoord_server::slaveHandle(string slaveIP, string slavePort, int fd)
         }
         if(numbytes>0)
         {
-            puts(buf);
+            //puts(buf);
             startTime=clock();
         }
         else
             cout<<"No receive"<<endl;
         secondsPassed = ((double)(clock() - startTime) / CLOCKS_PER_SEC)*1000;
-        cout<<clock()<<" "<<startTime;
+        //cout<<clock()<<" "<<startTime<<endl;
         if(secondsPassed >= secondsToDelay)
             cout<<"Slave down"<<endl;
         sleep(2);
@@ -344,31 +347,180 @@ int CCoord_server::login(string username, string password, int sock_fd)
         sendjson.push_back(make_pair("status","failure"));
         string tosend = create_json_string(sendjson);
         if(send(sock_fd, tosend.c_str(), tosend.length(), 0) == -1)
-        perror("send");
+            perror("send");
         return false;   // user not registered with tracker
     }
 }
 
-int CCoord_server::putData()
+int CCoord_server::putData(string bufstr, int client_fd)
 {
+    int primary_fd, secondary_fd,numbytes1, numbytes2;
+    char primaryResp[BUFFERSIZE], secondaryResp[BUFFERSIZE];
+    Document document;
+    document.Parse(bufstr.c_str());
+    string key = document["key"].GetString();
+    char* str = new char[key.length()+1];
+    strcpy(str, key.c_str());
+    Fnv32_t hash_val = fnv_32_str(str, FNV1_32_INIT);
 
+    bstNode* primaryNode = bst_upperBound(treeRoot, hash_val);
+    if(primaryNode == NULL)      // If hash value of key is greater than the last slave server, search slave with smallest hash value
+    {
+        primaryNode = bst_upperBound(treeRoot, 0);
+    }
+    bstNode* secondaryNode;
+    findSuccessor(treeRoot, secondaryNode, primaryNode->data.hashvalue);
+    if(secondaryNode == NULL)      // If hash value of key is greater than the last slave server, search slave with smallest hash value
+    {
+        secondaryNode = bst_upperBound(treeRoot, 0);
+    }
+    if(primaryNode->data.isActive && secondaryNode->data.isActive)
+    {
+        memset(primaryResp,0,BUFFERSIZE);
+        memset(secondaryResp,0,BUFFERSIZE);
+        primary_fd = connect_to_slave(&(primaryNode->data));
+        secondary_fd = connect_to_slave(&(secondaryNode->data));
+        thread primarythread(&CCoord_server::putDataThreadFn, this, bufstr, &primaryResp, &numbytes1, primary_fd);
+        thread secondarythread(&CCoord_server::putDataThreadFn, this, bufstr, &secondaryResp, &numbytes2, secondary_fd);
+        primarythread.join();
+        secondarythread.join();
+    }
+    else
+    {
+        if(!primaryNode->data.isActive)
+            cout<<"Primary slave down"<<endl;
+        if(!secondaryNode->data.isActive)
+            cout<<"Secondary slave down"<<endl;
+        return;
+    }
+    if(send(client_fd, primaryResp, numbytes1, 0) == -1)
+        perror("send");
 }
 
-int CCoord_server::getData()
+int CCoord_server::getData(string bufstr, int client_fd)
 {
-
+    put_update_delete_handle(bufstr, client_fd);
 }
 
-int CCoord_server::deleteData()
+int CCoord_server::deleteData(string bufstr, int client_fd)
 {
-
+    put_update_delete_handle(bufstr, client_fd);
 }
 
-int CCoord_server::updateData()
+int CCoord_server::updateData(string bufstr, int client_fd)
 {
-
+    put_update_delete_handle(bufstr, client_fd);
 }
 
+int CCoord_server::connect_to_slave(slaveData* slave)
+{
+    int sockfd, numbytes;  
+    char buf[BUFFERSIZE];
+    struct addrinfo hints, *servinfo, *p;
+    int rv;
+    char s[INET6_ADDRSTRLEN];
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    char* server_addr = new char[slave->IPaddr.size()+1];
+    strcpy(server_addr,slave->IPaddr.c_str());
+    char* server_port = new char[slave->portnum.size()+1];
+    strcpy(server_port, slave->portnum.c_str());
+    if ((rv = getaddrinfo(server_addr, server_port, &hints, &servinfo)) != 0) 
+    {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+        return -1;
+    }
+
+    // loop through all the results and connect to the first we can
+    for(p = servinfo; p != NULL; p = p->ai_next) 
+    {
+        if ((sockfd = socket(p->ai_family, p->ai_socktype,p->ai_protocol)) == -1) 
+        {
+            perror("client: socket");
+            continue;
+        }
+
+        if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) 
+        {
+            close(sockfd);
+            perror("client: connect");
+            continue;
+        }
+
+        break;
+    }
+
+    if (p == NULL) 
+    {
+        fprintf(stderr, "client: failed to connect\n");
+        return -2;
+    }
+
+    inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr),s, sizeof s);
+    printf("client: connecting to %s\n", s);
+
+    freeaddrinfo(servinfo); // all done with this structure
+    
+    return sockfd;
+}
+
+void CCoord_server::put_update_delete_handle(string bufstr, int client_fd)
+{
+    int primary_fd, secondary_fd,numbytes1, numbytes2;
+    char primaryResp[BUFFERSIZE], secondaryResp[BUFFERSIZE];
+    Document document;
+    document.Parse(bufstr.c_str());
+    string key = document["key"].GetString();
+    char* str = new char[key.length()+1];
+    strcpy(str, key.c_str());
+    Fnv32_t hash_val = fnv_32_str(str, FNV1_32_INIT);
+
+    bstNode* primaryNode = bst_upperBound(treeRoot, hash_val);
+    if(primaryNode == NULL)      // If hash value of key is greater than the last slave server, search slave with smallest hash value
+    {
+        primaryNode = bst_upperBound(treeRoot, 0);
+    }
+    bstNode* secondaryNode;
+    findSuccessor(treeRoot, secondaryNode, primaryNode->data.hashvalue);
+    if(secondaryNode == NULL)      // If hash value of key is greater than the last slave server, search slave with smallest hash value
+    {
+        secondaryNode = bst_upperBound(treeRoot, 0);
+    }
+    if(primaryNode->data.isActive && secondaryNode->data.isActive)
+    {
+        memset(primaryResp,0,BUFFERSIZE);
+        memset(secondaryResp,0,BUFFERSIZE);
+        primary_fd = connect_to_slave(&(primaryNode->data));
+        secondary_fd = connect_to_slave(&(secondaryNode->data));
+        thread primarythread(&CCoord_server::data_modify_ThreadFn, this, bufstr, &primaryResp, &numbytes1, primary_fd);
+        thread secondarythread(&CCoord_server::data_modify_ThreadFn, this, bufstr, &secondaryResp, &numbytes2, secondary_fd);
+        primarythread.join();
+        secondarythread.join();
+    }
+    else
+    {
+        if(!primaryNode->data.isActive)
+            cout<<"Primary slave down"<<endl;
+        if(!secondaryNode->data.isActive)
+            cout<<"Secondary slave down"<<endl;
+        return;
+    }
+    if(send(client_fd, primaryResp, numbytes1, 0) == -1)
+        perror("send");
+}
+void CCoord_server::data_modify_ThreadFn(string bufstr, char* response, int* numbytes, int fd)
+{
+    if(send(fd, bufstr.c_str(), bufstr.length(), 0) == -1)
+        perror("send");
+    if ((*numbytes = recv(fd, response, BUFFERSIZE, 0)) == -1) 
+    {
+        perror("recv");
+        return -1;
+        //exit(1);
+    }
+}
 string CCoord_server::create_json_string(vector<pair<string,string>> &data)
 {
     string json_string="{";
@@ -392,21 +544,21 @@ Fnv32_t CCoord_server::hashSlave(slaveData* slave)
     return hash_val;
 }
 
-void CCoord_server::insertBST(bstNode* root,slaveData* slave)
+void CCoord_server::insertBST(bstNode** root,slaveData* slave)
 {
-    if(root==NULL)
+    if(*root==NULL)
     {
         bstNode* newnode = new bstNode;
         newnode->data = *slave;
         newnode->leftchild = NULL;
         newnode->rightchild = NULL;
-        root = newnode;
+        *root = newnode;
         return;
     }
-    if(slave->hashvalue < root->data.hashvalue)
-        insertBST(root->leftchild, slave);
+    if(slave->hashvalue < (*root)->data.hashvalue)
+        insertBST(&((*root)->leftchild), slave);
     else
-        insertBST(root->rightchild, slave);
+        insertBST(&((*root)->rightchild), slave);
 
 }
 
@@ -463,7 +615,7 @@ void CCoord_server::findPreSuc(bstNode* root, bstNode*& pre, bstNode*& suc, Fnv3
     } 
 } 
 
-bstNode* findMinimum(bstNode* root)
+bstNode* CCoord_server::findMinimum(bstNode* root)
 {
 	while (root->leftchild)
 		root = root->leftchild;
@@ -471,7 +623,7 @@ bstNode* findMinimum(bstNode* root)
 }
 
 
-void findSuccessor(bstNode* root, bstNode*& succ, Fnv32_t key)
+void CCoord_server::findSuccessor(bstNode* root, bstNode*& succ, Fnv32_t key)
 {
 	// base case
 	if (root == nullptr) {
