@@ -1,6 +1,6 @@
 1. Connection Establish
 	{
-		"type":"client/server"
+		"type":"client/slave"
 	}
 
 2. Message Format for Create User
@@ -47,6 +47,7 @@
 
 9. Delete Response
 	{
+		"purpose":"delete",
 		"value":"success/failure/nexists"
 	}
 
@@ -57,11 +58,23 @@
 		"value":""
 	}
 	
+	Put Response
+	{
+		"purpose":"put"
+		"response":"Success/Exists"
+	}
+
 11. Update
 	{
 		"purpose":"update",
 		"key":"",
 		"value":""
+	}
+
+	Update Response 
+	{
+		"purpose":"update",
+		"value":"exists/added/failure"
 	}
 
 12. Value in Put/Update (Nested JSON String)
@@ -81,4 +94,14 @@
 14. Update Response
 	{
 		"value":"success/failure"
+	}
+	
+15. HeartBeat
+	{
+		"purpose":"heartbeat"
+	}
+
+16. Connection Termination
+	{
+		"purpose":"termination"
 	}

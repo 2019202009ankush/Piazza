@@ -127,7 +127,7 @@ int send_syn(int sock_fd)  //return 1 on successfully sending syn packet
     {
         cout<<"Sending Error"<<endl;
     }
-    cout<<"send_stat"<<send_stat<<endl;
+    //cout<<"send_stat"<<send_stat<<endl;
     char buff[BUFF_SIZE]={0};
     //cout<<"Reading Chunck Size"<<endl;
     int valread = recv( sock_fd , buff, BUFF_SIZE,0);
@@ -232,17 +232,17 @@ int put_data(int sock_fd,string key,string value)
     Document document;
     document.Parse(key.c_str());
     key = document["value"].GetString();
-    if(strcmp(key.c_str,"success")==0)
+    if(strcmp(key.c_str(),"success")==0)
     {
         cout<<"Tuple Added!!"<<endl;
         return 1;
     }
-    else if(strcmp(key.c_str,"exists")==0)
+    else if(strcmp(key.c_str(),"exists")==0)
     {
         cout<<"Tuple with given key already exists!!"<<endl;
         return 1;
     }
-    else if(strcmp(key.c_str,"failure")==0)
+    else
     {
         cout<<"Error occured while inserting"<<endl;
         return 1;
@@ -261,16 +261,22 @@ int update_data(int sock_fd,string key,string value)
     Document document;
     document.Parse(key.c_str());
     key = document["value"].GetString();
-    if(strcmp(key.c_str,"success")==0)
+    if(strcmp(key.c_str(),"exists")==0)
     {
         cout<<"Tuple Updated!!"<<endl;
         return 1;
     }
-    else if(strcmp(key.c_str,"failure")==0)
+    else if(strcmp(key.c_str(),"added")==0)
     {
-        cout<<"Error occured while updating!!"<<endl;
+        cout<<"Tuple Added!!"<<endl;
         return 1;
     }
+    else
+    {
+        cout<<"Error occured while updating!!"<<endl;
+        return 0;
+    }
+    
 }
 
 int main()
