@@ -126,8 +126,8 @@ int CCoord_server::alwaysListen()
 
         inet_ntop(their_addr.ss_family,get_in_addr((struct sockaddr *)&their_addr),s, sizeof s);
         printf("server: got connection from %s\n", s);
-        string connectionIP (s);
-        string connectionPort = to_string(ntohs(((struct sockaddr_in *)&their_addr)->sin_port));
+        //string connectionIP (s);
+        string senderPort = to_string(ntohs(((struct sockaddr_in *)&their_addr)->sin_port));
         char buf[BUFFERSIZE];
         int numbytes;
         // First receive
@@ -148,14 +148,17 @@ int CCoord_server::alwaysListen()
         {
             string sendstr="{\n\t\"status\":\"connected\"\n}";
             if(send(*new_fd, sendstr.c_str(), sendstr.length(), 0) == -1)
-            perror("send");
+                perror("send");
             thread typethread(&CCoord_server::clientHandle, this, *new_fd);
             typethread.detach();
         }
         else if(type=="slave")
         {
-            //thread typethread(slaveHandle,*new_fd);
-            //typethread.detach();
+            string slaveIP(s);
+            string slavePort(senderPort);
+            cout<<slaveIP<<" "<<slavePort<<endl;
+            thread typethread(&CCoord_server::slaveHandle, this, slaveIP, slavePort, *new_fd);
+            typethread.detach();
         }
         
     }
@@ -169,6 +172,7 @@ int CCoord_server::clientHandle(int fd)
     Document document;
     while(1)
     {
+        memset(buf,0,BUFFERSIZE);
         if ((numbytes = recv(fd, buf, BUFFERSIZE, 0)) == -1) 
         {
             perror("recv");
@@ -206,9 +210,73 @@ int CCoord_server::clientHandle(int fd)
         }
     }
 }
-int CCoord_server::slaveHandle(int fd)
+int CCoord_server::slaveHandle(string slaveIP, string slavePort, int fd)
 {
+    // Receive port num
+    char buf[BUFFERSIZE];
+    memset(buf,0,BUFFERSIZE);
+    int numbytes;
+    //if ((numbytes = recv(fd, buf, BUFFERSIZE, 0)) == -1) 
+    //{
+    //    perror("recv");
+    //    return -1;
+    //    //exit(1);
+    //}
+    //string slaveport(buf,numbytes);
+    //memset(buf,0,BUFFERSIZE);
+
+    slaveData* newSlave = new slaveData;
+    newSlave->IPaddr = slaveIP;
+    newSlave->portnum = slavePort;
+    newSlave->hashvalue = hashSlave(newSlave);
+    newSlave->isActive = true;
+    insertBST(treeRoot,newSlave);
+    std::pair<std::map<string,slaveData>::iterator,bool> ret;
+    ret =  slavemap.insert(make_pair(newSlave->IPaddr, *newSlave));
     
+    if (ret.second==false) 
+    {
+        // If element already exists
+        string sendstr="{\n\t\"status\":\"connected\"\n}";
+        if(send(fd, sendstr.c_str(), sendstr.length(), 0) == -1)
+                perror("send");
+        return 0;
+    }
+    else
+    {
+        string sendstr="{\n\t\"status\":\"connected\"\n}";
+        if(send(fd, sendstr.c_str(), sendstr.length(), 0) == -1)
+                perror("send");
+    }
+
+    fcntl(fd, F_SETFL, O_NONBLOCK);
+    clock_t startTime = clock(); //Start timer
+    double secondsPassed;
+    double secondsToDelay = SECTODELAY;
+    while(1)
+    {
+        memset(buf,0,BUFFERSIZE);
+        //sleep(2);
+        if ((numbytes = recv(fd, buf, BUFFERSIZE, 0)) == -1) 
+        {
+            perror("recv");
+            //return -1;
+            //exit(1);
+        }
+        if(numbytes>0)
+        {
+            puts(buf);
+            startTime=clock();
+        }
+        else
+            cout<<"No receive"<<endl;
+        secondsPassed = ((double)(clock() - startTime) / CLOCKS_PER_SEC)*1000;
+        cout<<clock()<<" "<<startTime;
+        if(secondsPassed >= secondsToDelay)
+            cout<<"Slave down"<<endl;
+        sleep(2);
+        //listenHeartbeat()
+    }
 }
 
 int CCoord_server::create_user(string username, string password, int sock_fd)
@@ -225,13 +293,19 @@ int CCoord_server::create_user(string username, string password, int sock_fd)
     if (ret.second==false) 
     {
         // If element already exists
-        if(send(sock_fd, "exists", strlen("exists"), 0) == -1)
+        vector<pair<string,string>> sendjson;
+        sendjson.push_back(make_pair("value","exists"));
+        string tosend = create_json_string(sendjson);
+        if(send(sock_fd, tosend.c_str(), tosend.length(), 0) == -1)
             perror("send");
         return 0;
     }
     else
     {
-        if(send(sock_fd, "success", strlen("success"), 0) == -1)
+        vector<pair<string,string>> sendjson;
+        sendjson.push_back(make_pair("value","success"));
+        string tosend = create_json_string(sendjson);
+        if(send(sock_fd, tosend.c_str(), tosend.length(), 0) == -1)
             perror("send");
         return 1;
     }
@@ -247,21 +321,30 @@ int CCoord_server::login(string username, string password, int sock_fd)
             //itr->second.IPaddr=IPaddr;
             //itr->second.password=password;
             itr->second.isActive=true;
-            if(send(sock_fd, "success", strlen("success"), 0) == -1)
+            vector<pair<string,string>> sendjson;
+            sendjson.push_back(make_pair("status","success"));
+            string tosend = create_json_string(sendjson);
+            if(send(sock_fd, tosend.c_str(), tosend.length(), 0) == -1)
                 perror("send");
             return true;    // User present, might not be active;
         }
         else
         {
-            if(send(sock_fd, "invalid", strlen("invalid"), 0) == -1)
+            vector<pair<string,string>> sendjson;
+            sendjson.push_back(make_pair("status","invalid"));
+            string tosend = create_json_string(sendjson);
+            if(send(sock_fd, tosend.c_str(), tosend.length(), 0) == -1)
                 perror("send");
             return false;
         }
     } 
     else
     {
-        if(send(sock_fd, "failure", strlen("failure"), 0) == -1)
-            perror("send");
+        vector<pair<string,string>> sendjson;
+        sendjson.push_back(make_pair("status","failure"));
+        string tosend = create_json_string(sendjson);
+        if(send(sock_fd, tosend.c_str(), tosend.length(), 0) == -1)
+        perror("send");
         return false;   // user not registered with tracker
     }
 }
@@ -284,6 +367,130 @@ int CCoord_server::deleteData()
 int CCoord_server::updateData()
 {
 
+}
+
+string CCoord_server::create_json_string(vector<pair<string,string>> &data)
+{
+    string json_string="{";
+    int i=0;
+    for(i=0;i<data.size()-1;i++)
+    {
+        json_string+="\n\t";
+        json_string+="\""+data[i].first+"\":\""+data[i].second+"\",";
+    }
+    json_string+="\n\t";
+    json_string+="\""+data[i].first+"\":\""+data[i].second+"\"";
+    json_string+="\n}";
+    return json_string;
+}
+
+Fnv32_t CCoord_server::hashSlave(slaveData* slave)
+{
+    char* str = new char[slave->IPaddr.length()+1];
+    strcpy(str, slave->IPaddr.c_str());
+    Fnv32_t hash_val = fnv_32_str(str, FNV1_32_INIT);
+    return hash_val;
+}
+
+void CCoord_server::insertBST(bstNode* root,slaveData* slave)
+{
+    if(root==NULL)
+    {
+        bstNode* newnode = new bstNode;
+        newnode->data = *slave;
+        newnode->leftchild = NULL;
+        newnode->rightchild = NULL;
+        root = newnode;
+        return;
+    }
+    if(slave->hashvalue < root->data.hashvalue)
+        insertBST(root->leftchild, slave);
+    else
+        insertBST(root->rightchild, slave);
+
+}
+
+bstNode* CCoord_server::bst_upperBound(bstNode* root,Fnv32_t val)
+{
+    if (root->leftchild == NULL && root->rightchild == NULL && root->data.hashvalue < val) 
+        return NULL; 
+    if ((root->data.hashvalue >= val && root->leftchild == NULL) || (root->data.hashvalue >= val && root->leftchild->data.hashvalue < val)) 
+        return root; 
+    if (root->data.hashvalue <= val) 
+        return bst_upperBound(root->rightchild, val); 
+    else
+        return bst_upperBound(root->leftchild, val); 
+}
+
+void CCoord_server::findPreSuc(bstNode* root, bstNode*& pre, bstNode*& suc, Fnv32_t key) 
+{ 
+    // Base case 
+    if (root == NULL)  return ; 
+  
+    // If key is present at root 
+    if (root->data.hashvalue == key) 
+    { 
+        // the maximum value in left subtree is predecessor 
+        if (root->leftchild != NULL) 
+        { 
+            bstNode* tmp = root->leftchild; 
+            while (tmp->rightchild) 
+                tmp = tmp->rightchild; 
+            pre = tmp ; 
+        } 
+  
+        // the minimum value in right subtree is successor 
+        if (root->rightchild != NULL) 
+        { 
+            bstNode* tmp = root->rightchild ; 
+            while (tmp->leftchild) 
+                tmp = tmp->leftchild ; 
+            suc = tmp ; 
+        } 
+        return ; 
+    } 
+  
+    // If key is smaller than root's key, go to left subtree 
+    if (root->data.hashvalue > key) 
+    { 
+        suc = root ; 
+        findPreSuc(root->leftchild, pre, suc, key) ; 
+    } 
+    else // go to right subtree 
+    { 
+        pre = root ; 
+        findPreSuc(root->rightchild, pre, suc, key) ; 
+    } 
+} 
+
+bstNode* findMinimum(bstNode* root)
+{
+	while (root->leftchild)
+		root = root->leftchild;
+	return root;
+}
+
+
+void findSuccessor(bstNode* root, bstNode*& succ, Fnv32_t key)
+{
+	// base case
+	if (root == nullptr) {
+		succ = nullptr;
+		return;
+	}
+
+	if (root->data.hashvalue == key)
+	{
+		if (root->rightchild)
+			succ = findMinimum(root->rightchild);
+	}
+	else if (key < root->data.hashvalue)
+	{
+		succ = root;
+		findSuccessor(root->leftchild, succ, key);
+	}
+	else
+		findSuccessor(root->rightchild, succ, key);
 }
 
 int main()
