@@ -193,23 +193,25 @@ int CCoord_server::clientHandle(int fd)
         {
             login(document["username"].GetString(),document["password"].GetString(), fd);
         }
-        else if(purpose=="put")
-        {
-            string bufstr(buf);
-            putData(bufstr, fd);
-        }
         else if(purpose=="get")
         {
             string bufstr(buf);
             getData(bufstr, fd);    //passing file desc and command string
         }
+        else if(purpose=="put")
+        {
+            string bufstr(buf);
+            putData(bufstr, fd);
+        }
         else if(purpose=="delete")
         {
-            deleteData();
+            string bufstr(buf);
+            deleteData(bufstr, fd);
         }
         else if(purpose=="update")
         {
-            updateData();
+            string bufstr(buf);
+            updateData(bufstr, fd);
         }
     }
 }
@@ -352,52 +354,43 @@ int CCoord_server::login(string username, string password, int sock_fd)
     }
 }
 
-int CCoord_server::putData(string bufstr, int client_fd)
+int CCoord_server::getData(string bufstr, int client_fd)
 {
-    int primary_fd, secondary_fd,numbytes1, numbytes2;
-    char primaryResp[BUFFERSIZE], secondaryResp[BUFFERSIZE];
+    int slave_fd, numbytes;
+    char buf[BUFFERSIZE];
     Document document;
     document.Parse(bufstr.c_str());
     string key = document["key"].GetString();
     char* str = new char[key.length()+1];
     strcpy(str, key.c_str());
     Fnv32_t hash_val = fnv_32_str(str, FNV1_32_INIT);
-
-    bstNode* primaryNode = bst_upperBound(treeRoot, hash_val);
-    if(primaryNode == NULL)      // If hash value of key is greater than the last slave server, search slave with smallest hash value
+    bstNode* targetNode = bst_upperBound(treeRoot, hash_val);
+    if(targetNode == NULL)      // If hash value of key is greater than the last slave server, search slave with smallest hash value
     {
-        primaryNode = bst_upperBound(treeRoot, 0);
+        targetNode = bst_upperBound(treeRoot, 0);
     }
-    bstNode* secondaryNode;
-    findSuccessor(treeRoot, secondaryNode, primaryNode->data.hashvalue);
-    if(secondaryNode == NULL)      // If hash value of key is greater than the last slave server, search slave with smallest hash value
+    if(targetNode->data.isActive)
     {
-        secondaryNode = bst_upperBound(treeRoot, 0);
-    }
-    if(primaryNode->data.isActive && secondaryNode->data.isActive)
-    {
-        memset(primaryResp,0,BUFFERSIZE);
-        memset(secondaryResp,0,BUFFERSIZE);
-        primary_fd = connect_to_slave(&(primaryNode->data));
-        secondary_fd = connect_to_slave(&(secondaryNode->data));
-        thread primarythread(&CCoord_server::putDataThreadFn, this, bufstr, &primaryResp, &numbytes1, primary_fd);
-        thread secondarythread(&CCoord_server::putDataThreadFn, this, bufstr, &secondaryResp, &numbytes2, secondary_fd);
-        primarythread.join();
-        secondarythread.join();
+        slave_fd = connect_to_slave(&targetNode->data);
+        if(send(slave_fd, bufstr.c_str(), bufstr.length(), 0) == -1)
+            perror("send");
+        memset(buf,0,BUFFERSIZE);
+        if ((numbytes = recv(slave_fd, buf, BUFFERSIZE, 0)) == -1) 
+        {
+            perror("recv");
+            return -1;
+            //exit(1);
+        }
     }
     else
     {
-        if(!primaryNode->data.isActive)
-            cout<<"Primary slave down"<<endl;
-        if(!secondaryNode->data.isActive)
-            cout<<"Secondary slave down"<<endl;
-        return;
+        cout<<"Target slave down"<<endl;
     }
-    if(send(client_fd, primaryResp, numbytes1, 0) == -1)
+    if(send(client_fd, buf, numbytes, 0) == -1)
         perror("send");
 }
 
-int CCoord_server::getData(string bufstr, int client_fd)
+int CCoord_server::putData(string bufstr, int client_fd)
 {
     put_update_delete_handle(bufstr, client_fd);
 }
@@ -494,8 +487,8 @@ void CCoord_server::put_update_delete_handle(string bufstr, int client_fd)
         memset(secondaryResp,0,BUFFERSIZE);
         primary_fd = connect_to_slave(&(primaryNode->data));
         secondary_fd = connect_to_slave(&(secondaryNode->data));
-        thread primarythread(&CCoord_server::data_modify_ThreadFn, this, bufstr, &primaryResp, &numbytes1, primary_fd);
-        thread secondarythread(&CCoord_server::data_modify_ThreadFn, this, bufstr, &secondaryResp, &numbytes2, secondary_fd);
+        thread primarythread(&CCoord_server::data_modify_ThreadFn, this, bufstr, primaryResp, &numbytes1, primary_fd);
+        thread secondarythread(&CCoord_server::data_modify_ThreadFn, this, bufstr, secondaryResp, &numbytes2, secondary_fd);
         primarythread.join();
         secondarythread.join();
     }
@@ -510,7 +503,7 @@ void CCoord_server::put_update_delete_handle(string bufstr, int client_fd)
     if(send(client_fd, primaryResp, numbytes1, 0) == -1)
         perror("send");
 }
-void CCoord_server::data_modify_ThreadFn(string bufstr, char* response, int* numbytes, int fd)
+int CCoord_server::data_modify_ThreadFn(string bufstr, char* response, int* numbytes, int fd)
 {
     if(send(fd, bufstr.c_str(), bufstr.length(), 0) == -1)
         perror("send");

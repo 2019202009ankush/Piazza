@@ -113,13 +113,13 @@ public:
         int updateData(string bufstr, int client_fd);
         int connect_to_slave(slaveData* slave);
         void put_update_delete_handle(string bufstr, int client_fd);
-        void data_modify_ThreadFn(string bufstr, char* response, int* numbytes1, int fd);
+        int data_modify_ThreadFn(string bufstr, char* response, int* numbytes1, int fd);
         string create_json_string(vector<pair<string,string>> &data);
         Fnv32_t hashSlave(slaveData* newSlave);
         void insertBST(bstNode** root,slaveData* newSlave);
         bstNode* bst_upperBound(bstNode* root,Fnv32_t val);
         void findPreSuc(bstNode* root, bstNode*& pre, bstNode*& suc, Fnv32_t key);
         void findSuccessor(bstNode* root, bstNode*& succ, Fnv32_t key);
-        bstNode* findMinimum(bstNode* root)
+        bstNode* findMinimum(bstNode* root);
 
 };
