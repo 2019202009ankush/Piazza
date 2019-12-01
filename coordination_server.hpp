@@ -8,6 +8,8 @@
 #include<cstring>
 #include "include/rapidjson/document.h"
 #include "include/rapidjson/rapidjson.h"
+#include "include/rapidjson/stringbuffer.h"
+#include "include/rapidjson/writer.h"
 #include "fnv-hash/fnv.h"
 #include "fnv-hash/hash_32.c"
 
@@ -97,10 +99,12 @@ private:
         map<string,slaveData> slavemap;
         coordination_serv coord_info;
         bstNode* treeRoot;
+        int nodecount;
 public:
         CCoord_server()
         {
             treeRoot=NULL;
+            nodecount=0;
         }
         int alwaysListen();
         int clientHandle(int fd);
@@ -114,6 +118,7 @@ public:
         int connect_to_slave(slaveData* slave);
         void put_update_delete_handle(string bufstr, int client_fd);
         int data_modify_ThreadFn(string bufstr, char* response, int* numbytes1, int fd);
+        int migrationInit(slaveData* slave_down);
         string create_json_string(vector<pair<string,string>> &data);
         Fnv32_t hashSlave(slaveData* newSlave);
         void insertBST(bstNode** root,slaveData* newSlave);
@@ -121,5 +126,6 @@ public:
         void findPreSuc(bstNode* root, bstNode*& pre, bstNode*& suc, Fnv32_t key);
         void findSuccessor(bstNode* root, bstNode*& succ, Fnv32_t key);
         bstNode* findMinimum(bstNode* root);
+        bstNode* findMaximum(bstNode* root);
 
 };

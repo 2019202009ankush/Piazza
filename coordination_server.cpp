@@ -147,6 +147,7 @@ int CCoord_server::alwaysListen()
         int ty;
         if(type=="client")
         {
+            cout<<"client: "<<*new_fd<<endl;
             string sendstr="{\n\t\"status\":\"connected\"\n}";
             if(send(*new_fd, sendstr.c_str(), sendstr.length(), 0) == -1)
                 perror("send");
@@ -167,12 +168,13 @@ int CCoord_server::alwaysListen()
 
 int CCoord_server::clientHandle(int fd)
 {
-    char buf[BUFFERSIZE];
     int numbytes;
     // First receive
+    cout<<"before client fd: "<<fd<<endl;
     Document document;
     while(1)
     {
+        char buf[BUFFERSIZE];
         memset(buf,0,BUFFERSIZE);
         if ((numbytes = recv(fd, buf, BUFFERSIZE, 0)) == -1) 
         {
@@ -181,17 +183,30 @@ int CCoord_server::clientHandle(int fd)
             //exit(1);
         }
         string tmp(buf);
-        cout<<tmp<<endl;
+        cout<<tmp<<endl<<endl<<endl;
         document.Parse(tmp.c_str());
+        assert(document.HasMember("purpose"));
         assert(document["purpose"].IsString());
         string purpose=document["purpose"].GetString();
         if(purpose=="create_user")
         {
-            create_user(document["username"].GetString(),document["password"].GetString(), fd);
+            assert(document.HasMember("username"));
+            assert(document["username"].IsString());
+            string username = document["username"].GetString();
+            assert(document.HasMember("password"));
+            assert(document["password"].IsString());
+            string password = document["password"].GetString();
+            create_user(username, password, fd);
         }
         else if(purpose=="login")
         {
-            login(document["username"].GetString(),document["password"].GetString(), fd);
+            assert(document.HasMember("username"));
+            assert(document["username"].IsString());
+            string username = document["username"].GetString();
+            assert(document.HasMember("password"));
+            assert(document["password"].IsString());
+            string password = document["password"].GetString();
+            login(username, password, fd);
         }
         else if(purpose=="get")
         {
@@ -278,7 +293,10 @@ int CCoord_server::slaveHandle(string slaveIP, string slavePort, int fd)
         secondsPassed = ((double)(clock() - startTime) / CLOCKS_PER_SEC)*1000;
         //cout<<clock()<<" "<<startTime<<endl;
         if(secondsPassed >= secondsToDelay)
-            cout<<"Slave down"<<endl;
+        {
+            cout<<"Slave down. Socket addr: "<<newSlave->IPaddr<<":"<<newSlave->portnum<<endl<<"Initiating migration..."<<endl;
+            //migrationInit(newSlave);
+        }
         sleep(2);
         //listenHeartbeat()
     }
@@ -360,6 +378,8 @@ int CCoord_server::getData(string bufstr, int client_fd)
     char buf[BUFFERSIZE];
     Document document;
     document.Parse(bufstr.c_str());
+    assert(document.HasMember("key"));
+    assert(document["key"].IsString());
     string key = document["key"].GetString();
     char* str = new char[key.length()+1];
     strcpy(str, key.c_str());
@@ -463,9 +483,11 @@ void CCoord_server::put_update_delete_handle(string bufstr, int client_fd)
 {
     int primary_fd, secondary_fd,numbytes1, numbytes2;
     char primaryResp[BUFFERSIZE], secondaryResp[BUFFERSIZE];
-    Document document;
-    document.Parse(bufstr.c_str());
-    string key = document["key"].GetString();
+    Document document_p, document_s;
+    document_p.Parse(bufstr.c_str());
+    assert(document_p.HasMember("key"));
+    assert(document_p["key"].IsString());
+    string key = document_p["key"].GetString();
     char* str = new char[key.length()+1];
     strcpy(str, key.c_str());
     Fnv32_t hash_val = fnv_32_str(str, FNV1_32_INIT);
@@ -475,20 +497,45 @@ void CCoord_server::put_update_delete_handle(string bufstr, int client_fd)
     {
         primaryNode = bst_upperBound(treeRoot, 0);
     }
+    assert(document_p.HasMember("addAs"));
+    assert(document_p["addAs"].IsString());
+    document_p["addAs"] = "1";
+    //cout<<document_p["addAs"].GetString()<<endl;
     bstNode* secondaryNode;
     findSuccessor(treeRoot, secondaryNode, primaryNode->data.hashvalue);
     if(secondaryNode == NULL)      // If hash value of key is greater than the last slave server, search slave with smallest hash value
     {
         secondaryNode = bst_upperBound(treeRoot, 0);
     }
+    document_s.Parse(bufstr.c_str());
+    assert(document_s.HasMember("addAs"));
+    assert(document_s["addAs"].IsString());
+    document_s["addAs"] = "0";
+    //cout<<document_s["addAs"].GetString()<<endl;
+
+    
+ 
+    StringBuffer p_buffer;
+    Writer<StringBuffer> p_writer(p_buffer);
+    document_p.Accept(p_writer);
+    const char* p_output = p_buffer.GetString();
+    string p_Sendbuf(p_output);
+
+    StringBuffer s_buffer;
+    Writer<StringBuffer> s_writer(s_buffer);
+    document_s.Accept(s_writer);
+    const char* s_output = s_buffer.GetString();
+    string s_Sendbuf(s_output);
+
     if(primaryNode->data.isActive && secondaryNode->data.isActive)
     {
         memset(primaryResp,0,BUFFERSIZE);
         memset(secondaryResp,0,BUFFERSIZE);
         primary_fd = connect_to_slave(&(primaryNode->data));
         secondary_fd = connect_to_slave(&(secondaryNode->data));
-        thread primarythread(&CCoord_server::data_modify_ThreadFn, this, bufstr, primaryResp, &numbytes1, primary_fd);
-        thread secondarythread(&CCoord_server::data_modify_ThreadFn, this, bufstr, secondaryResp, &numbytes2, secondary_fd);
+        //cout<<"prim: "<<primary_fd<<"\tsec: "<<secondary_fd<<"\tclient_fd: "<<endl;
+        thread primarythread(&CCoord_server::data_modify_ThreadFn, this, p_Sendbuf, primaryResp, &numbytes1, primary_fd);
+        thread secondarythread(&CCoord_server::data_modify_ThreadFn, this, s_Sendbuf, secondaryResp, &numbytes2, secondary_fd);
         primarythread.join();
         secondarythread.join();
     }
@@ -507,13 +554,58 @@ int CCoord_server::data_modify_ThreadFn(string bufstr, char* response, int* numb
 {
     if(send(fd, bufstr.c_str(), bufstr.length(), 0) == -1)
         perror("send");
+    
+    memset(response,0,BUFFERSIZE);
     if ((*numbytes = recv(fd, response, BUFFERSIZE, 0)) == -1) 
     {
         perror("recv");
         return -1;
         //exit(1);
     }
+    return 1;
 }
+
+int CCoord_server::migrationInit(slaveData* slave_down)
+{
+    bstNode* pre=NULL, *succ=NULL, *succsucc=NULL;
+    findPreSuc(treeRoot, pre, succ, slave_down->hashvalue);
+    if(pre==NULL)
+        pre = findMaximum(treeRoot);
+    if(succ==NULL)
+        succ = bst_upperBound(treeRoot, 0);
+    if(succsucc==NULL)
+        succsucc = bst_upperBound(treeRoot, 0);
+
+    int pred_fd, succ_fd, succsucc_fd;
+
+    /*
+    // Step 1: Connect to succsucc and ask it to GET data from succ to update it's own PREV
+    succsucc_fd = connect_to_slave(&(succsucc->data));
+    if(send(succsucc_fd, primaryResp, numbytes1, 0) == -1)
+        perror("send");
+    memset(buf,0,BUFFERSIZE);
+    if ((numbytes = recv(succsucc_fd, buf, BUFFERSIZE, 0)) == -1) 
+    {
+        perror("recv");
+        return -1;
+        //exit(1);
+    }
+
+    // Step 2: Ask succ to merge its PREV table with its CURR
+    // Step 3: Ask succ to GET data from pred to update its PREV
+    succ_fd = connect_to_slave(&(succsucc->data));
+    if(send(succ_fd, primaryResp, numbytes1, 0) == -1)
+        perror("send");
+    memset(buf,0,BUFFERSIZE);
+    if ((numbytes = recv(succ_fd, buf, BUFFERSIZE, 0)) == -1) 
+    {
+        perror("recv");
+        return -1;
+        //exit(1);
+    }
+    */
+}
+
 string CCoord_server::create_json_string(vector<pair<string,string>> &data)
 {
     string json_string="{";
@@ -546,6 +638,7 @@ void CCoord_server::insertBST(bstNode** root,slaveData* slave)
         newnode->leftchild = NULL;
         newnode->rightchild = NULL;
         *root = newnode;
+        nodecount++;
         return;
     }
     if(slave->hashvalue < (*root)->data.hashvalue)
@@ -615,12 +708,18 @@ bstNode* CCoord_server::findMinimum(bstNode* root)
 	return root;
 }
 
-
+bstNode* CCoord_server::findMaximum(bstNode* root)
+{
+	while (root->rightchild)
+		root = root->rightchild;
+	return root;
+}
 void CCoord_server::findSuccessor(bstNode* root, bstNode*& succ, Fnv32_t key)
 {
 	// base case
-	if (root == nullptr) {
-		succ = nullptr;
+	if (root == NULL) 
+    {
+		succ = NULL;
 		return;
 	}
 
@@ -628,6 +727,8 @@ void CCoord_server::findSuccessor(bstNode* root, bstNode*& succ, Fnv32_t key)
 	{
 		if (root->rightchild)
 			succ = findMinimum(root->rightchild);
+        else
+            succ = NULL;
 	}
 	else if (key < root->data.hashvalue)
 	{
