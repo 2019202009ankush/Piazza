@@ -648,6 +648,63 @@ void CCoord_server::insertBST(bstNode** root,slaveData* slave)
 
 }
 
+
+struct bstNode * minValueNode(struct bstNode* node) 
+{ 
+    struct bstNode* current = node; 
+  
+    while (current && current->leftchild != NULL) 
+        current = current->leftchild; 
+  
+    return current; 
+} 
+
+void CCoord_server::deleteBST(bstNode** root,Fnv32_t key)
+{
+
+ // base case 
+    if (*root == NULL) return ; 
+  
+    // If the key to be deleted is smaller than the root's key, 
+    // then it lies in left subtree 
+    if (key < (*root)->data.hashvalue) 
+        deleteBST(&((*root)->leftchild), key);
+  
+    // If the key to be deleted is greater than the root's key, 
+    // then it lies in right subtree 
+    else if (key > (*root)->data.hashvalue) 
+        deleteBST(&((*root)->rightchild), key); 
+  
+    // if key is same as root's key, then This is the node 
+    // to be deleted 
+    else
+    { 
+        // node with only one child or no child 
+        if ((*root)->leftchild == NULL) 
+        { 
+            struct bstNode *temp = root->rightchild; 
+            free(root); 
+        } 
+        else if ((*root)->rightchild == NULL) 
+        { 
+            struct bstNode *temp = root->leftchild; 
+            free(root); 
+        } 
+  
+        // node with two children: Get the inorder successor (smallest 
+        // in the right subtree) 
+        struct bstNode* temp = minValueNode(root->rightchild); 
+  
+        // Copy the inorder successor's content to this node 
+        (*root)->data.hashvalue = temp->data.hashvalue; 
+  
+        // Delete the inorder successor 
+        root->rightchild = deleteBST(root->rightchild, temp->data.hashvalue); 
+    } 
+    return; 
+
+}
+
 bstNode* CCoord_server::bst_upperBound(bstNode* root,Fnv32_t val)
 {
     if (root->leftchild == NULL && root->rightchild == NULL && root->data.hashvalue < val) 

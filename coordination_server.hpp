@@ -127,5 +127,6 @@ public:
         void findSuccessor(bstNode* root, bstNode*& succ, Fnv32_t key);
         bstNode* findMinimum(bstNode* root);
         bstNode* findMaximum(bstNode* root);
+        void deleteBST(bstNode** root,data.hashvalue)
 
 };
