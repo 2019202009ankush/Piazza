@@ -147,7 +147,7 @@ int CCoord_server::alwaysListen()
         int ty;
         if(type=="client")
         {
-            cout<<"client: "<<*new_fd<<endl;
+            //cout<<"client: "<<*new_fd<<endl;
             string sendstr="{\n\t\"status\":\"connected\"\n}";
             if(send(*new_fd, sendstr.c_str(), sendstr.length(), 0) == -1)
                 perror("send");
@@ -170,7 +170,6 @@ int CCoord_server::clientHandle(int fd)
 {
     int numbytes;
     // First receive
-    cout<<"before client fd: "<<fd<<endl;
     Document document;
     while(1)
     {
@@ -295,7 +294,7 @@ int CCoord_server::slaveHandle(string slaveIP, string slavePort, int fd)
         if(secondsPassed >= secondsToDelay)
         {
             cout<<"Slave down. Socket addr: "<<newSlave->IPaddr<<":"<<newSlave->portnum<<endl<<"Initiating migration..."<<endl;
-            //migrationInit(newSlave);
+            migrationInit(newSlave);
         }
         sleep(2);
         //listenHeartbeat()
@@ -568,6 +567,8 @@ int CCoord_server::data_modify_ThreadFn(string bufstr, char* response, int* numb
 int CCoord_server::migrationInit(slaveData* slave_down)
 {
     bstNode* pre=NULL, *succ=NULL, *succsucc=NULL;
+    char buf[BUFFERSIZE];
+    int numbytes;
     findPreSuc(treeRoot, pre, succ, slave_down->hashvalue);
     if(pre==NULL)
         pre = findMaximum(treeRoot);
@@ -578,11 +579,15 @@ int CCoord_server::migrationInit(slaveData* slave_down)
 
     int pred_fd, succ_fd, succsucc_fd;
 
-    /*
+
     // Step 1: Connect to succsucc and ask it to GET data from succ to update it's own PREV
     succsucc_fd = connect_to_slave(&(succsucc->data));
-    if(send(succsucc_fd, primaryResp, numbytes1, 0) == -1)
+    vector<pair<string,string>> sendjson;
+    sendjson.push_back(make_pair("purpose","migration"));
+    string tosend = create_json_string(sendjson);
+    if(send(succsucc_fd, tosend.c_str(), tosend.length(), 0) == -1)
         perror("send");
+    /*
     memset(buf,0,BUFFERSIZE);
     if ((numbytes = recv(succsucc_fd, buf, BUFFERSIZE, 0)) == -1) 
     {
@@ -590,7 +595,6 @@ int CCoord_server::migrationInit(slaveData* slave_down)
         return -1;
         //exit(1);
     }
-
     // Step 2: Ask succ to merge its PREV table with its CURR
     // Step 3: Ask succ to GET data from pred to update its PREV
     succ_fd = connect_to_slave(&(succsucc->data));
@@ -603,6 +607,8 @@ int CCoord_server::migrationInit(slaveData* slave_down)
         return -1;
         //exit(1);
     }
+
+    treeRoot = deleteBST(&treeRoot, slave_down->hashvalue);
     */
 }
 
@@ -659,21 +665,21 @@ struct bstNode * minValueNode(struct bstNode* node)
     return current; 
 } 
 
-void CCoord_server::deleteBST(bstNode** root,Fnv32_t key)
+bstNode* CCoord_server::deleteBST(bstNode** root,Fnv32_t key)
 {
 
  // base case 
-    if (*root == NULL) return ; 
+    if (*root == NULL) return *root; 
   
     // If the key to be deleted is smaller than the root's key, 
     // then it lies in left subtree 
     if (key < (*root)->data.hashvalue) 
-        deleteBST(&((*root)->leftchild), key);
+        (*root)->leftchild = deleteBST(&((*root)->leftchild), key);
   
     // If the key to be deleted is greater than the root's key, 
     // then it lies in right subtree 
     else if (key > (*root)->data.hashvalue) 
-        deleteBST(&((*root)->rightchild), key); 
+        (*root)->rightchild = deleteBST(&((*root)->rightchild), key); 
   
     // if key is same as root's key, then This is the node 
     // to be deleted 
@@ -682,26 +688,28 @@ void CCoord_server::deleteBST(bstNode** root,Fnv32_t key)
         // node with only one child or no child 
         if ((*root)->leftchild == NULL) 
         { 
-            struct bstNode *temp = root->rightchild; 
-            free(root); 
+            struct bstNode *temp = (*root)->rightchild; 
+            free(root);
+            return temp;
         } 
         else if ((*root)->rightchild == NULL) 
         { 
-            struct bstNode *temp = root->leftchild; 
-            free(root); 
+            struct bstNode *temp = (*root)->leftchild; 
+            free(root);
+            return temp; 
         } 
   
         // node with two children: Get the inorder successor (smallest 
         // in the right subtree) 
-        struct bstNode* temp = minValueNode(root->rightchild); 
+        struct bstNode* temp = minValueNode((*root)->rightchild); 
   
         // Copy the inorder successor's content to this node 
         (*root)->data.hashvalue = temp->data.hashvalue; 
   
         // Delete the inorder successor 
-        root->rightchild = deleteBST(root->rightchild, temp->data.hashvalue); 
+        (*root)->rightchild = deleteBST(&((*root)->rightchild), temp->data.hashvalue); 
     } 
-    return; 
+    return *root; 
 
 }
 
