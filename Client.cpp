@@ -4,7 +4,7 @@
 #include <arpa/inet.h>
 #include <sstream>
 #include <vector>
-#include "/include/rapidjson/document.h"
+#include "/home/manish/Piazza/include/rapidjson/document.h"
 
 #define DOMAIN AF_INET
 #define TYPE SOCK_STREAM
@@ -199,6 +199,7 @@ int delete_data(string key,int sock_fd)
     vector<pair<string,string>> command;
     command.push_back(make_pair("purpose","delete"));
     command.push_back(make_pair("key",key));
+    command.push_back(make_pair("addAs","-1"));
     key = create_json_string(command);
     while(send_command(sock_fd,key)<0);
     while(recv_response(sock_fd,key)<0);
@@ -226,9 +227,10 @@ int put_data(int sock_fd,string key,string value)
     command.push_back(make_pair("purpose","put"));
     command.push_back(make_pair("key",key));
     command.push_back(make_pair("value",value));
+    command.push_back(make_pair("addAs","-1"));
     key = create_json_string(command);
-    while(send_command(sock_fd,key)!=1);
-    while(recv_response(sock_fd,key)!=1);
+    while(send_command(sock_fd,key)<0);
+    while(recv_response(sock_fd,key)<0);
     Document document;
     document.Parse(key.c_str());
     key = document["value"].GetString();
@@ -255,9 +257,10 @@ int update_data(int sock_fd,string key,string value)
     command.push_back(make_pair("purpose","update"));
     command.push_back(make_pair("key",key));
     command.push_back(make_pair("value",value));
+    command.push_back(make_pair("addAs","-1"));
     key = create_json_string(command);
-    while(send_command(sock_fd,key)!=1);
-    while(recv_response(sock_fd,key)!=1);
+    while(send_command(sock_fd,key)<0);
+    while(recv_response(sock_fd,key)<0);
     Document document;
     document.Parse(key.c_str());
     key = document["value"].GetString();
@@ -274,9 +277,9 @@ int update_data(int sock_fd,string key,string value)
     else
     {
         cout<<"Error occured while updating!!"<<endl;
-        return 0;
+        return 1;
     }
-    
+
 }
 
 int main()
@@ -296,7 +299,7 @@ int main()
     {
         //Connection Establish Failed
         cout<<"Problem in Connection Establishment"<<endl;
-        return 0;
+        return 1;
     }
     /*Send SYN Packet*/
     while(send_syn(sock_fd)<0);
