@@ -1,6 +1,6 @@
 8000
 8000
-10.42.0.227
+10.42.0.1
 
 1st port is port at which Slave Will Listen
 

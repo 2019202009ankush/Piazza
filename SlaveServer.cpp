@@ -1,12 +1,15 @@
+/*HEADER INCLUDES*/
 #include <iostream>
 #include <fstream>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include "/home/manish/Piazza/include/rapidjson/document.h"
+#include "include/rapidjson/document.h"
 #include <unordered_map>
 #include <unistd.h>
 #include <vector>
+/*HEADER INCLUDES*/
 
+/*MACRO DECLARATIONS*/
 #define DOMAIN AF_INET
 #define TYPE_TCP SOCK_STREAM
 #define TYPE_UDP SOCK_DGRAM     //Using UDP for HeartBeat Msgs
@@ -15,11 +18,22 @@
 #define LEVEL SOL_SOCKET
 #define SET_OPTIONS SO_REUSEADDR
 #define HEART_BEAT_DURATION 2 //Duration is converted to time
+/*MACRO DECLARATIONS*/
 
+/*NAMESPACES DECLARATIONS*/
 using namespace std;
 using namespace rapidjson;
+/*NAMESPACES DECLARATIONS*/
 
+/*GLOBAL DATA STRUCTURES*/
 unordered_map<string,string> data_client;
+unordered_map<string,string> data_secondary;
+/*THREAD MANAGEMENT*/
+int migration_count=0;
+int thread_count=0;
+pthread_mutex_t mutex_sync;
+/*THREAD MANAGEMENT*/
+/*GLOBAL DATA STRUCTURES*/
 
 string create_json_string(vector<pair<string,string>> &data)
 {
@@ -164,86 +178,240 @@ int getData(int sock_fd , string key)
     if(send_stat<0)
     {
         cout<<"Error in sending GET Response"<<endl;
-        return 0;
     }
     return 1;
 }
 
-int putData(int sock_fd, string key,string value)
+int putData(int sock_fd, string key,string value,string addAs)
 {
-    unordered_map<string,string>::iterator itr = data_client.find(key);
+    int adding = stoi(addAs);
     string response;
-    if(itr==data_client.end())
+    unordered_map<string,string>::iterator itr;
+    if(adding==1)   //add to primary map
     {
-        //currently does not exist so can insert
-        data_client[key]=value;
-        response = "{\n\t\"purpose\":\"put\",\n\t\"value\":\"success\"\n}";
+        itr = data_client.find(key);
+        if(itr==data_client.end())
+        {
+            //currently does not exist so can insert
+            data_client[key]=value;
+            response = "{\n\t\"purpose\":\"put\",\n\t\"value\":\"success\"\n}";
+            cout<<"Put Success"<<endl;
+        }
+        else
+        {
+            response = "{\n\t\"purpose\":\"put\",\n\t\"value\":\"exists\"\n}";
+            cout<<"Already Exists"<<endl;
+        }
+    }
+    else if(adding==0) //add to previous map
+    {
+        itr = data_secondary.find(key);
+        if(itr==data_secondary.end())
+        {
+            //currently does not exist so can insert
+            data_secondary[key]=value;
+            response = "{\n\t\"purpose\":\"put\",\n\t\"value\":\"success\"\n}";
+            cout<<"Put Success"<<endl;
+        }
+        else
+        {
+            response = "{\n\t\"purpose\":\"put\",\n\t\"value\":\"exists\"\n}";
+            cout<<"Already Exists"<<endl;
+        }
     }
     else
     {
-        response = "{\n\t\"purpose\":\"put\",\n\t\"value\":\"exists\"\n}";
+        //Error in Adding No Table Indicated
+        response = "{\n\t\"purpose\":\"put\",\n\t\"value\":\"no_proper_map_specified\"\n}";
     }
     int send_stat=send(sock_fd,response.c_str(),response.length(),0);
     if(send_stat<0)
     {
         cout<<"Error in sending PUT Response"<<endl;
-        return 0;
     }
+    cout<<"Put Response "<<response<<endl;
     return 1;
 }
 
-int updateData(int sock_fd,string key,string value)
+int updateData(int sock_fd,string key,string value,string addAs)
 {
-    unordered_map<string,string>::iterator itr = data_client.find(key);
-    string response;
+    int adding = stoi(addAs);
+    unordered_map<string,string>::iterator itr;
     vector<pair<string,string>> response_create;
     response_create.push_back(make_pair("purpose","update"));
-    if(itr == data_client.end())
+    string response;
+    if(adding==1)
     {
-        //data does not exist
-        data_client[key] = value;
-        response_create.push_back(make_pair("value","added"));
-        response = create_json_string(response_create);
+        itr = data_client.find(key);
+        if(itr == data_client.end())
+        {
+            //data does not exist
+            data_client[key] = value;
+            response_create.push_back(make_pair("value","added"));
+        }
+        else
+        {
+            data_client[key] = value;
+            response_create.push_back(make_pair("value","exists"));
+        }
+    }
+    else if(adding==0)
+    {
+        itr = data_secondary.find(key);
+        if(itr == data_secondary.end())
+        {
+            //data does not exist
+            data_secondary[key] = value;
+            response_create.push_back(make_pair("value","added"));
+        }
+        else
+        {
+            data_secondary[key] = value;
+            response_create.push_back(make_pair("value","exists"));
+        }
     }
     else
     {
-        response_create.push_back(make_pair("value","exists"));
-        response = create_json_string(response_create);
+        response_create.push_back(make_pair("value","no_proper_map_specified"));
     }
+    response = create_json_string(response_create);
     int send_stat=send(sock_fd,response.c_str(),response.length(),0);
     if(send_stat<0)
     {
         cout<<"Error in sending UPDATE Response"<<endl;
-        return 0;
     }
     return 1;
 }
 
-int deleteData(int sock_fd, string key)
+int deleteData(int sock_fd, string key,string addAs)
 {
-    unordered_map<string,string>::iterator itr = data_client.find(key);
+    int adding = stoi(addAs);
+    unordered_map<string,string>::iterator itr;
     string response;
     vector<pair<string,string>> response_create;
     response_create.push_back(make_pair("purpose","delete"));
-    if(itr == data_client.end() )
+    if(adding==1)
     {
-        //data does not exist
-        response_create.push_back(make_pair("value","nexists"));
-        response = create_json_string(response_create);
+        itr = data_client.find(key);
+        if(itr == data_client.end())
+        {
+            //data does not exist
+            response_create.push_back(make_pair("value","nexists"));
+        }
+        else
+        {
+            data_client.erase(itr);
+            response_create.push_back(make_pair("value","success"));
+        }
+    }
+    else if(adding==0)
+    {
+        itr = data_secondary.find(key);
+        if(itr == data_secondary.end())
+        {
+            //data does not exist
+            response_create.push_back(make_pair("value","nexists"));
+        }
+        else
+        {
+            data_secondary.erase(itr);
+            response_create.push_back(make_pair("value","success"));
+        }
     }
     else
     {
-        data_client.erase(itr);
-        response_create.push_back(make_pair("value","success"));
-        response = create_json_string(response_create);
+        response_create.push_back(make_pair("value","no_proper_map_specified"));
     }
+    response = create_json_string(response_create);
     int send_stat=send(sock_fd,response.c_str(),response.length(),0);
     if(send_stat<0)
     {
         cout<<"Error in sending DELETE Response"<<endl;
-        return 0;
     }
     return 1;
+}
+
+int handle_migration_thread(string command,int sock_fd)
+{
+    cout<<"Migration Thread Hit"<<endl;
+    pthread_mutex_lock(&mutex_sync);
+        migration_count++;
+        while(thread_count>0);  //Wait for current thread to exit
+        /*Normal Exec*/
+        
+        /*Normal Exec*/
+        migration_count--;
+    pthread_mutex_unlock(&mutex_sync);
+}
+
+int normal_thread(string command,int sock_fd)
+{
+    Document document;
+    document.Parse(command.c_str());
+    if(migration_count>0)
+    {
+        sleep(300);
+        cout<<"New Thread and Some Migration in Process"<<endl;
+        //Some Migration Thread is Running
+        pthread_mutex_lock(&mutex_sync);
+        thread_count++;
+        /*Normal Execution*/
+            if(strcmp(document["purpose"].GetString(),"termination")==0)
+            {
+                //termination of connection
+                close(sock_fd);
+            }
+            else if(strcmp(document["purpose"].GetString(),"get")==0)
+            {
+                while(getData(sock_fd,document["key"].GetString())!=1);
+            }
+            else if(strcmp(document["purpose"].GetString(),"put")==0)
+            {
+                while(putData(sock_fd,document["key"].GetString(),document["value"].GetString(),document["addAs"].GetString())!=1);
+            }
+            else if(strcmp(document["purpose"].GetString(),"update")==0)
+            {
+                while(updateData(sock_fd,document["key"].GetString(),document["value"].GetString(),document["addAs"].GetString())!=1);
+            }
+            else if(strcmp(document["purpose"].GetString(),"delete")==0)
+            {
+                while(deleteData(sock_fd,document["key"].GetString(),document["addAs"].GetString())!=1);
+            }
+        /*Normal Execution*/
+        thread_count--;
+        pthread_mutex_unlock(&mutex_sync);
+    }
+    else
+    {
+        sleep(300);
+        cout<<"New Thread and NO Migration in Process"<<endl;
+        //No other Migration Thread Running
+        thread_count++;
+        /*Normal Execution*/
+            if(strcmp(document["purpose"].GetString(),"termination")==0)
+            {
+                //termination of connection
+                close(sock_fd);
+            }
+            else if(strcmp(document["purpose"].GetString(),"get")==0)
+            {
+                while(getData(sock_fd,document["key"].GetString())!=1);
+            }
+            else if(strcmp(document["purpose"].GetString(),"put")==0)
+            {
+                while(putData(sock_fd,document["key"].GetString(),document["value"].GetString(),document["addAs"].GetString())!=1);
+            }
+            else if(strcmp(document["purpose"].GetString(),"update")==0)
+            {
+                while(updateData(sock_fd,document["key"].GetString(),document["value"].GetString(),document["addAs"].GetString())!=1);
+            }
+            else if(strcmp(document["purpose"].GetString(),"delete")==0)
+            {
+                while(deleteData(sock_fd,document["key"].GetString(),document["addAs"].GetString())!=1);
+            }
+        /*Normal Execution*/
+        thread_count--;
+    }
 }
 
 void* request_process(void* accept_stat)
@@ -259,6 +427,19 @@ void* request_process(void* accept_stat)
     string response_recv=buff;
     Document document;
     document.Parse(response_recv.c_str());
+    /*THREAD TYPE AND PROCESS ACC.*/
+    if(strcmp(document["purpose"].GetString(),"migration")==0)
+    {
+        //Migration Thread
+        handle_migration_thread(response_recv,sock_fd);
+    }
+    else
+    {
+        //Normal Thread
+        normal_thread(response_recv,sock_fd);
+    }
+    /*THREAD TYPE AND PROCESS ACC.*/
+    /*
     if(strcmp(document["purpose"].GetString(),"termination")==0)
     {
         //termination of connection
@@ -270,20 +451,22 @@ void* request_process(void* accept_stat)
     }
     else if(strcmp(document["purpose"].GetString(),"put")==0)
     {
-        while(putData(sock_fd,document["key"].GetString(),document["value"].GetString()));
+        while(putData(sock_fd,document["key"].GetString(),document["value"].GetString(),document["addAs"].GetString())!=1);
     }
     else if(strcmp(document["purpose"].GetString(),"update")==0)
     {
-        updateData(sock_fd,document["key"].GetString(),document["value"].GetString());
+        while(updateData(sock_fd,document["key"].GetString(),document["value"].GetString(),document["addAs"].GetString())!=1);
     }
     else if(strcmp(document["purpose"].GetString(),"delete")==0)
     {
-        deleteData(sock_fd,document["key"].GetString());
+        while(deleteData(sock_fd,document["key"].GetString(),document["addAs"].GetString())!=1);
     }
+    */
 }
 
 int main()
 {
+    mutex_sync = PTHREAD_MUTEX_INITIALIZER;
     string path,ip,port_listen;
     int port,sock_fd,sock_fd_listen,heart_thread,int_port_listen,option_set=1;
     struct sockaddr_in self_track;
