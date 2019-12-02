@@ -295,6 +295,8 @@ int CCoord_server::slaveHandle(string slaveIP, string slavePort, int fd)
         {
             cout<<"Slave down. Socket addr: "<<newSlave->IPaddr<<":"<<newSlave->portnum<<endl<<"Initiating migration..."<<endl;
             migrationInit(newSlave);
+            close(fd);
+            break;
         }
         sleep(2);
         //listenHeartbeat()
@@ -596,7 +598,7 @@ int CCoord_server::migrationInit(slaveData* slave_down)
         //exit(1);
     }
     // Step 2: Ask succ to merge its PREV table with its CURR
-    // Step 3: Ask succ to GET data from pred to update its PREV
+    // Step 3: Ask succ to GET pred's CURR to update its PREV
     succ_fd = connect_to_slave(&(succsucc->data));
     if(send(succ_fd, primaryResp, numbytes1, 0) == -1)
         perror("send");

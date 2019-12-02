@@ -105,3 +105,25 @@
 	{
 		"purpose":"termination"
 	}
+	
+17. Migration
+	msg1: From coor. to slave
+	{
+		"purpose":"migration",
+		"task":"get",
+		"ip":"",
+		"port":""
+		"what":"prev/curr"
+		"addTo":"prev/curr"
+	}
+	msg2: From slave to slave
+	{
+		"purpose":"migration"
+		"task":"send"
+		"what":"prev/curr"
+	}
+	msg3: From coord. to slave
+	{
+		"purpose":"migration"
+		"task":"merge"
+	}
