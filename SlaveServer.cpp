@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <unistd.h>
 #include <vector>
+#include <sstream>
 /*HEADER INCLUDES*/
 
 /*MACRO DECLARATIONS*/
@@ -331,14 +332,150 @@ int deleteData(int sock_fd, string key,string addAs)
     return 1;
 }
 
+int merge_maps()    //return 1 on success
+{
+    for(auto i:data_secondary)
+    {
+        data_client[i.first]=i.second;
+    }
+    data_secondary.clear();
+}
+
+int send_map(int sock_fd, string what)  //return 1 on success
+{
+    string map_to_send;
+    if(what=="curr")
+    {
+        for(auto i:data_client)
+        {
+            map_to_send+="{\"key\":\""+i.first+"\",\"value\":\""+i.second+"\"},";
+        }
+    }
+    else if(what=="prev")
+    {
+        for(auto i:data_secondary)
+        {
+            map_to_send+="{\"key\":\""+i.first+"\",\"value\":\""+i.second+"\"},";
+        }
+    }
+    else
+    {
+        cout<<"Error in Send_Map msg format"<<endl;
+        return 0;
+    }
+    map_to_send.erase(map_to_send.size()-1);
+    const void * data_send = map_to_send.c_str();
+    int send_stat=send(sock_fd,data_send,map_to_send.length(),0);
+    if(send_stat<0)
+    {
+        cout<<"Sending Error"<<endl;
+    }
+    return send_stat;
+}
+
+int addToMap(string data_to_add,string addTo)
+{
+    stringstream addData(data_to_add);
+    string json_data;
+    if(addTo=="prev")
+    {
+        while(getline(addData,json_data,','))
+        {
+            Document document;
+            document.Parse(json_data.c_str());
+            data_secondary[document["key"].GetString()]=document["value"].GetString();
+        }
+    }
+    else
+    {
+        while(getline(addData,json_data,','))
+        {
+            Document document;
+            document.Parse(json_data.c_str());
+            data_client[document["key"].GetString()]=document["value"].GetString();
+        }
+    }
+    return 1;
+}
+
+int get_data(string ip,string port,string what,string addTo)    //return 1 on success
+{
+    vector<pair<string,string>> command_creation;
+    command_creation.push_back(make_pair("purpose","migration"));
+    command_creation.push_back(make_pair("task","send"));
+    command_creation.push_back(make_pair("what",what));
+    string command = create_json_string(command_creation);
+    int sock_fd = connection_establish(ip,stoi(port));
+    const void * data_send = command.c_str();
+    int send_stat=send(sock_fd,data_send,command.length(),0);
+    if(send_stat<0)
+    {
+        cout<<"Sending Error"<<endl;
+    }
+    char buff[BUFF_SIZE]={0};
+    int valread = recv( sock_fd , buff, BUFF_SIZE,0);
+    if(valread<0)
+    {
+        cout<<"Error in Reading SYN ACK"<<endl;
+    }
+    string response_recv=buff;
+    if(addToMap(response_recv,addTo))
+    {
+        cout<<"Added to Map Sucessfully"<<endl;
+    }
+    else
+    {
+        cout<<"Error in Adding to Map"<<endl;
+    }
+    return 1;
+}
+
 int handle_migration_thread(string command,int sock_fd)
 {
-    cout<<"Migration Thread Hit"<<endl;
     pthread_mutex_lock(&mutex_sync);
         migration_count++;
         while(thread_count>0);  //Wait for current thread to exit
+        cout<<"Migration Thread Hit"<<endl;
         /*Normal Exec*/
-        
+        Document document;
+        document.Parse(command.c_str());
+        if(document["task"].GetString()=="merge")
+        {
+            if(merge_maps())
+            {
+                cout<<"Maps Merged Success"<<endl;
+            }
+            else
+            {
+                cout<<"Error in Merging Maps"<<endl;
+            }
+        }
+        else if(document["task"].GetString()=="send")
+        {
+            if(send_map(sock_fd,document["what"].GetString()))
+            {
+                cout<<"Map has been sent"<<endl;
+            }
+            else
+            {
+                cout<<"Error in Sending Map"<<endl;
+            }
+        }
+        else if(document["task"].GetString()=="get")
+        {
+            if(get_data(document["ip"].GetString(),document["port"].GetString(),document["what"].GetString(),document["addTo"].GetString()))
+            {
+                cout<<"Getting Data in Migration"<<endl;
+            }
+            else
+            {
+                cout<<"Cannot Get Data in Migration"<<endl;
+            }
+        }
+        else
+        {
+            cout<<"Illegal Migration Request"<<endl;
+        }
         /*Normal Exec*/
         migration_count--;
     pthread_mutex_unlock(&mutex_sync);
@@ -350,11 +487,11 @@ int normal_thread(string command,int sock_fd)
     document.Parse(command.c_str());
     if(migration_count>0)
     {
-        sleep(300);
         cout<<"New Thread and Some Migration in Process"<<endl;
         //Some Migration Thread is Running
         pthread_mutex_lock(&mutex_sync);
         thread_count++;
+        //sleep(300);
         /*Normal Execution*/
             if(strcmp(document["purpose"].GetString(),"termination")==0)
             {
@@ -383,10 +520,10 @@ int normal_thread(string command,int sock_fd)
     }
     else
     {
-        sleep(300);
         cout<<"New Thread and NO Migration in Process"<<endl;
         //No other Migration Thread Running
         thread_count++;
+        //sleep(300);
         /*Normal Execution*/
             if(strcmp(document["purpose"].GetString(),"termination")==0)
             {
@@ -439,29 +576,6 @@ void* request_process(void* accept_stat)
         normal_thread(response_recv,sock_fd);
     }
     /*THREAD TYPE AND PROCESS ACC.*/
-    /*
-    if(strcmp(document["purpose"].GetString(),"termination")==0)
-    {
-        //termination of connection
-        close(sock_fd);
-    }
-    else if(strcmp(document["purpose"].GetString(),"get")==0)
-    {
-        while(getData(sock_fd,document["key"].GetString())!=1);
-    }
-    else if(strcmp(document["purpose"].GetString(),"put")==0)
-    {
-        while(putData(sock_fd,document["key"].GetString(),document["value"].GetString(),document["addAs"].GetString())!=1);
-    }
-    else if(strcmp(document["purpose"].GetString(),"update")==0)
-    {
-        while(updateData(sock_fd,document["key"].GetString(),document["value"].GetString(),document["addAs"].GetString())!=1);
-    }
-    else if(strcmp(document["purpose"].GetString(),"delete")==0)
-    {
-        while(deleteData(sock_fd,document["key"].GetString(),document["addAs"].GetString())!=1);
-    }
-    */
 }
 
 int main()

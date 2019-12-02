@@ -112,18 +112,18 @@
 		"purpose":"migration",
 		"task":"get",
 		"ip":"",
-		"port":""
-		"what":"prev/curr"
+		"port":"",
+		"what":"prev/curr",
 		"addTo":"prev/curr"
 	}
 	msg2: From slave to slave
 	{
-		"purpose":"migration"
-		"task":"send"
+		"purpose":"migration",
+		"task":"send",
 		"what":"prev/curr"
 	}
 	msg3: From coord. to slave
 	{
-		"purpose":"migration"
+		"purpose":"migration",
 		"task":"merge"
 	}
