@@ -85,11 +85,11 @@ int send_sync(int sock_fd,string port_listen)  //return 1 on successfully sendin
     int send_stat=send(sock_fd,data_send,data.length(),0);
     if(send_stat<0)
     {
-        cout<<"Sending Error"<<endl;
+        cout<<"Sending Error in SYN"<<endl;
     }
     cout<<"send_stat"<<send_stat<<endl;
     char buff[BUFF_SIZE]={0};
-    //cout<<"Reading Chunck Size"<<endl;
+    cout<<"Reading Chunck Size"<<endl;
     int valread = recv( sock_fd , buff, BUFF_SIZE,0);
     if(valread<0)
     {
@@ -348,14 +348,14 @@ int send_map(int sock_fd, string what)  //return 1 on success
     {
         for(auto i:data_client)
         {
-            map_to_send+="{\"key\":\""+i.first+"\",\"value\":\""+i.second+"\"},";
+            map_to_send+="{\n\t\"key\":\""+i.first+"\",\n\t\"value\":\""+i.second+"\"\n}~";
         }
     }
     else if(what=="prev")
     {
         for(auto i:data_secondary)
         {
-            map_to_send+="{\"key\":\""+i.first+"\",\"value\":\""+i.second+"\"},";
+            map_to_send+="{\n\t\"key\":\""+i.first+"\",\n\t\"value\":\""+i.second+"\"\n}~";
         }
     }
     else
@@ -368,7 +368,7 @@ int send_map(int sock_fd, string what)  //return 1 on success
     int send_stat=send(sock_fd,data_send,map_to_send.length(),0);
     if(send_stat<0)
     {
-        cout<<"Sending Error"<<endl;
+        cout<<"Sending Error in send_map"<<endl;
     }
     return send_stat;
 }
@@ -377,9 +377,10 @@ int addToMap(string data_to_add,string addTo)
 {
     stringstream addData(data_to_add);
     string json_data;
+    cout<<"Data To Add \n\n"<<data_to_add<<endl;
     if(addTo=="prev")
     {
-        while(getline(addData,json_data,','))
+        while(getline(addData,json_data,'~'))
         {
             Document document;
             document.Parse(json_data.c_str());
@@ -388,7 +389,7 @@ int addToMap(string data_to_add,string addTo)
     }
     else
     {
-        while(getline(addData,json_data,','))
+        while(getline(addData,json_data,'~'))
         {
             Document document;
             document.Parse(json_data.c_str());
@@ -410,9 +411,10 @@ int get_data(string ip,string port,string what,string addTo)    //return 1 on su
     int send_stat=send(sock_fd,data_send,command.length(),0);
     if(send_stat<0)
     {
-        cout<<"Sending Error"<<endl;
+        cout<<"Sending Error in GET DATA Request"<<endl;
     }
     char buff[BUFF_SIZE]={0};
+    cout<<"Waiting to Receive in get_data"<<endl;
     int valread = recv( sock_fd , buff, BUFF_SIZE,0);
     if(valread<0)
     {
@@ -481,13 +483,13 @@ int handle_migration_thread(string command,int sock_fd)
         migration_count--;
     pthread_mutex_unlock(&mutex_sync);
     /*SENDING ACK FOR MIGRATION*/
-    string ack_string = "1";
+    /*string ack_string = "1";
     const void * data_send = ack_string.c_str();
     int send_stat=send(sock_fd,data_send,ack_string.length(),0);
     if(send_stat<0)
     {
         cout<<"HeartBeat Sending Error"<<endl;
-    }
+    }*/
     /*SENDING ACK FOR MIGRATION*/
 }
 
@@ -566,6 +568,7 @@ void* request_process(void* accept_stat)
     int* accept_sta = (int *) accept_stat;
     int sock_fd = (*accept_sta);
     char buff[BUFF_SIZE]={0};
+    cout<<"Waiting to Receive in request_process"<<endl;
     int valread = recv( sock_fd , buff, BUFF_SIZE,0);
     if(valread<0)
     {
