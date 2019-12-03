@@ -10,8 +10,7 @@
 #include "include/rapidjson/rapidjson.h"
 #include "include/rapidjson/stringbuffer.h"
 #include "include/rapidjson/writer.h"
-#include "fnv-hash/fnv.h"
-#include "fnv-hash/hash_32.c"
+#include "lru_cache.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -60,6 +59,7 @@ struct slaveData
     string portnum; //This is Listening Port of SlaveServer
     Fnv32_t hashvalue;
     bool isActive;
+    lruCache cache;
     slaveData()
     {
         IPaddr='\0';
@@ -116,9 +116,10 @@ public:
         int deleteData(string bufstr, int client_fd);
         int updateData(string bufstr, int client_fd);
         int connect_to_slave(slaveData* slave);
-        void put_update_delete_handle(string bufstr, int client_fd);
+        bstNode* put_update_delete_handle(string bufstr, int client_fd);
         int data_modify_ThreadFn(string bufstr, char* response, int* numbytes1, int fd);
-        int migrationInit(slaveData* slave_down);
+        int migrationInitDown(slaveData* slave_down);
+        int migrationInitUp(slaveData* slave_up);
         string create_json_string(vector<pair<string,string>> &data);
         Fnv32_t hashSlave(slaveData* newSlave);
         void insertBST(bstNode** root,slaveData* newSlave);
