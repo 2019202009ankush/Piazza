@@ -518,7 +518,7 @@ int normal_thread(string command,int sock_fd)
             if(strcmp(document["purpose"].GetString(),"termination")==0)
             {
                 //termination of connection
-                close(sock_fd);
+                //close(sock_fd);
             }
             else if(strcmp(document["purpose"].GetString(),"get")==0)
             {
@@ -550,7 +550,7 @@ int normal_thread(string command,int sock_fd)
             if(strcmp(document["purpose"].GetString(),"termination")==0)
             {
                 //termination of connection
-                close(sock_fd);
+                //close(sock_fd);
             }
             else if(strcmp(document["purpose"].GetString(),"get")==0)
             {
@@ -645,6 +645,7 @@ int main()
     while(true)
     {
         file_fds[file_fd_count]=accept(sock_fd_listen, (struct sockaddr*)&new_connection,&new_connection_size);
+        new_connection_size=sizeof(new_connection);
         pthread_t service_request;
         pthread_attr_t attr;
         pthread_attr_init(&attr);
