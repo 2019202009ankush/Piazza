@@ -73,6 +73,7 @@ int connection_establish(string ip,int port)
     //cout<<"Connection Status = "<<connect_stat<<endl;
     if(connect_stat<0)
     {
+        cout<<"Error in Creating Connection"<<endl;
         return -1;
     }
     return sock_fd;
@@ -364,11 +365,17 @@ int send_map(int sock_fd, string what)  //return 1 on success
         return 0;
     }
     map_to_send.erase(map_to_send.end()-1);
+    if(map_to_send.size()==0)
+    {
+        map_to_send="1";
+    }
     const void * data_send = map_to_send.c_str();
     int send_stat=send(sock_fd,data_send,map_to_send.length(),0);
     if(send_stat<0)
     {
-        cout<<"Sending Error in send_map"<<endl;
+        cout<<"Sending Error in send_map "<<errno<<endl;
+        cout<<"FD is:"<<sock_fd<<endl;
+        return 0;
     }
     return send_stat;
 }
@@ -407,6 +414,7 @@ int get_data(string ip,string port,string what,string addTo)    //return 1 on su
     command_creation.push_back(make_pair("what",what));
     string command = create_json_string(command_creation);
     int sock_fd = connection_establish(ip,stoi(port));
+    cout<<"IP :"<<ip<<" Port:"<<port<<" FD:"<<sock_fd<<endl;
     const void * data_send = command.c_str();
     int send_stat=send(sock_fd,data_send,command.length(),0);
     if(send_stat<0)
@@ -421,6 +429,8 @@ int get_data(string ip,string port,string what,string addTo)    //return 1 on su
         cout<<"Error in Reading SYN ACK"<<endl;
     }
     string response_recv=buff;
+    if(response_recv=="1")
+        return 1;
     if(addToMap(response_recv,addTo))
     {
         cout<<"Added to Map Sucessfully"<<endl;
@@ -461,7 +471,7 @@ int handle_migration_thread(string command,int sock_fd)
             }
             else
             {
-                cout<<"Error in Sending Map"<<endl;
+                cout<<"Error in Sending Map "<<endl;
             }
         }
         else if(task=="get")
@@ -593,6 +603,8 @@ void* request_process(void* accept_stat)
 
 int main()
 {
+    int file_fds[SOMAXCONN];
+    int file_fd_count=0;
     mutex_sync = PTHREAD_MUTEX_INITIALIZER;
     string path,ip,port_listen;
     int port,sock_fd,sock_fd_listen,heart_thread,int_port_listen,option_set=1;
@@ -609,6 +621,7 @@ int main()
     co_ord_data>>ip;
     /*OPEN CONNECTION*/
     sock_fd = connection_establish(ip,port);
+    cout<<"IP :"<<ip<<" Port:"<<port<<" FD:"<<sock_fd<<endl;
     /*OPEN CONNECTION*/
     /*SYNC MSG*/
     while(send_sync(sock_fd,port_listen)!=1);
@@ -631,12 +644,12 @@ int main()
     }
     while(true)
     {
-        int accept_stat=accept(sock_fd_listen, (struct sockaddr*)&new_connection,&new_connection_size);
+        file_fds[file_fd_count]=accept(sock_fd_listen, (struct sockaddr*)&new_connection,&new_connection_size);
         pthread_t service_request;
         pthread_attr_t attr;
         pthread_attr_init(&attr);
         pthread_attr_setdetachstate(&attr,PTHREAD_CREATE_JOINABLE);
-        service_request = pthread_create(&service_request,&attr,request_process,(void *)&accept_stat);
+        service_request = pthread_create(&service_request,&attr,request_process,(void *)&(file_fds[file_fd_count++]));
     }
     /*Listening Co-Ordination Server for Requests*/
     return 0;
