@@ -18,7 +18,7 @@
 #define BUFF_SIZE 512*1024
 #define LEVEL SOL_SOCKET
 #define SET_OPTIONS SO_REUSEADDR
-#define HEART_BEAT_DURATION 2 //Duration is converted to time
+#define HEART_BEAT_DURATION 4 //Duration is converted to time
 /*MACRO DECLARATIONS*/
 
 /*NAMESPACES DECLARATIONS*/
@@ -363,7 +363,7 @@ int send_map(int sock_fd, string what)  //return 1 on success
         cout<<"Error in Send_Map msg format"<<endl;
         return 0;
     }
-    map_to_send.erase(map_to_send.size()-1);
+    map_to_send.erase(map_to_send.end()-1);
     const void * data_send = map_to_send.c_str();
     int send_stat=send(sock_fd,data_send,map_to_send.length(),0);
     if(send_stat<0)
@@ -439,7 +439,8 @@ int handle_migration_thread(string command,int sock_fd)
         /*Normal Exec*/
         Document document;
         document.Parse(command.c_str());
-        if(document["task"].GetString()=="merge")
+        string task = document["task"].GetString();
+        if(task=="merge")
         {
             if(merge_maps())
             {
@@ -450,7 +451,7 @@ int handle_migration_thread(string command,int sock_fd)
                 cout<<"Error in Merging Maps"<<endl;
             }
         }
-        else if(document["task"].GetString()=="send")
+        else if(task=="send")
         {
             if(send_map(sock_fd,document["what"].GetString()))
             {
@@ -461,7 +462,7 @@ int handle_migration_thread(string command,int sock_fd)
                 cout<<"Error in Sending Map"<<endl;
             }
         }
-        else if(document["task"].GetString()=="get")
+        else if(task=="get")
         {
             if(get_data(document["ip"].GetString(),document["port"].GetString(),document["what"].GetString(),document["addTo"].GetString()))
             {
@@ -479,6 +480,15 @@ int handle_migration_thread(string command,int sock_fd)
         /*Normal Exec*/
         migration_count--;
     pthread_mutex_unlock(&mutex_sync);
+    /*SENDING ACK FOR MIGRATION*/
+    string ack_string = "1";
+    const void * data_send = ack_string.c_str();
+    int send_stat=send(sock_fd,data_send,ack_string.length(),0);
+    if(send_stat<0)
+    {
+        cout<<"HeartBeat Sending Error"<<endl;
+    }
+    /*SENDING ACK FOR MIGRATION*/
 }
 
 int normal_thread(string command,int sock_fd)
