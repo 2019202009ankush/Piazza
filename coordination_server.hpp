@@ -129,5 +129,6 @@ public:
         bstNode* findMinimum(bstNode* root);
         bstNode* findMaximum(bstNode* root);
         bstNode* deleteBST(bstNode** root,Fnv32_t key);
+        void inorder(bstNode *root);
 
 };

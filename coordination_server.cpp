@@ -249,7 +249,9 @@ int CCoord_server::slaveHandle(string slaveIP, string slavePort, int fd)
     newSlave->portnum = slavePort;
     newSlave->hashvalue = hashSlave(newSlave);
     newSlave->isActive = true;
+    cout<<slaveIP<<": "<<newSlave->hashvalue<<endl;
     insertBST(&treeRoot,newSlave);
+    inorder(treeRoot);
     std::pair<std::map<string,slaveData>::iterator,bool> ret;
     ret =  slavemap.insert(make_pair(newSlave->IPaddr, *newSlave));
     
@@ -388,12 +390,12 @@ int CCoord_server::getData(string bufstr, int client_fd)
     strcpy(str, key.c_str());
     Fnv32_t hash_val = fnv_32_str(str, FNV1_32_INIT);
     bstNode* targetNode = bst_upperBound(treeRoot, hash_val);
-    
+
     if(targetNode == NULL)      // If hash value of key is greater than the last slave server, search slave with smallest hash value
     {
-        targetNode = bst_upperBound(treeRoot, 0);
+        targetNode = findMinimum(treeRoot);
     }
-
+    /*
     string cachestr = targetNode->data.cache.getValue(key);
     if(cachestr != "none")
     {
@@ -401,6 +403,7 @@ int CCoord_server::getData(string bufstr, int client_fd)
             perror("send");
     }
     else
+    */
     {
         if(targetNode->data.isActive)
         {
@@ -427,6 +430,7 @@ int CCoord_server::getData(string bufstr, int client_fd)
 int CCoord_server::putData(string bufstr, int client_fd)
 {
     bstNode* primary = put_update_delete_handle(bufstr, client_fd);
+    /*
     if(primary != NULL)
     {
         Document document_p;
@@ -444,12 +448,13 @@ int CCoord_server::putData(string bufstr, int client_fd)
     {
         cout<<"Primary node NULL for putting data"<<endl;
     }
+    */
 }
 
 int CCoord_server::deleteData(string bufstr, int client_fd)
 {
     bstNode* primary = put_update_delete_handle(bufstr, client_fd);
-
+    /*
     if(primary != NULL)
     {
         Document document_p;
@@ -463,12 +468,13 @@ int CCoord_server::deleteData(string bufstr, int client_fd)
     {
         cout<<"Primary node NULL for deleting data"<<endl;
     }
+    */
 }
 
 int CCoord_server::updateData(string bufstr, int client_fd)
 {
     bstNode* primary = put_update_delete_handle(bufstr, client_fd);
-
+    /*
     if(primary !=NULL)
     {
         Document document_p;
@@ -487,7 +493,7 @@ int CCoord_server::updateData(string bufstr, int client_fd)
     {
         cout<<"Primary node NULL for updating data"<<endl;
     }
-    
+    */
 }   
 
 int CCoord_server::connect_to_slave(slaveData* slave)
@@ -524,6 +530,7 @@ int CCoord_server::connect_to_slave(slaveData* slave)
         {
             close(sockfd);
             perror("client: connect");
+            cout<<"Slave IP: "<<slave->IPaddr<<endl;
             continue;
         }
 
@@ -560,7 +567,7 @@ bstNode* CCoord_server::put_update_delete_handle(string bufstr, int client_fd)
     bstNode* primaryNode = bst_upperBound(treeRoot, hash_val);
     if(primaryNode == NULL)      // If hash value of key is greater than the last slave server, search slave with smallest hash value
     {
-        primaryNode = bst_upperBound(treeRoot, 0);
+        primaryNode = findMinimum(treeRoot);
     }
     assert(document_p.HasMember("addAs"));
     assert(document_p["addAs"].IsString());
@@ -570,7 +577,7 @@ bstNode* CCoord_server::put_update_delete_handle(string bufstr, int client_fd)
     findSuccessor(treeRoot, secondaryNode, primaryNode->data.hashvalue);
     if(secondaryNode == NULL)      // If hash value of key is greater than the last slave server, search slave with smallest hash value
     {
-        secondaryNode = bst_upperBound(treeRoot, 0);
+        secondaryNode = findMinimum(treeRoot);
     }
     document_s.Parse(bufstr.c_str());
     assert(document_s.HasMember("addAs"));
@@ -634,6 +641,7 @@ int CCoord_server::data_modify_ThreadFn(string bufstr, char* response, int* numb
 
 int CCoord_server::migrationInitDown(slaveData* slave_down)
 {
+
     bstNode* pre=NULL, *succ=NULL, *succsucc=NULL;
     char buf[BUFFERSIZE];
     int numbytes;
@@ -641,11 +649,13 @@ int CCoord_server::migrationInitDown(slaveData* slave_down)
     if(pre==NULL)
         pre = findMaximum(treeRoot);
     if(succ==NULL)
-        succ = bst_upperBound(treeRoot, 0);
+        succ = findMinimum(treeRoot);
+    treeRoot = deleteBST(&treeRoot, slave_down->hashvalue);
     findSuccessor(treeRoot, succsucc, succ->data.hashvalue);
     if(succsucc==NULL)
-        succsucc = bst_upperBound(treeRoot, 0);
+        succsucc = findMinimum(treeRoot);
 
+    cout<<"pred: "<<pre->data.IPaddr<<" succ : "<<succ->data.IPaddr<<" succsucc: "<<succsucc->data.IPaddr<<endl;
     int pred_fd, succ_fd, succsucc_fd;
 
 
@@ -661,13 +671,14 @@ int CCoord_server::migrationInitDown(slaveData* slave_down)
     string tosend = create_json_string(sendjson);
     if(send(succsucc_fd, tosend.c_str(), tosend.length(), 0) == -1)
         perror("send");
-    memset(buf,0,BUFFERSIZE);
-    if ((numbytes = recv(succsucc_fd, buf, BUFFERSIZE, 0)) == -1) 
-    {
-        perror("recv");
-        return -1;
-        //exit(1);
-    }
+    //memset(buf,0,BUFFERSIZE);
+    //if ((numbytes = recv(succsucc_fd, buf, BUFFERSIZE, 0)) == -1) 
+    //{
+    //    perror("recv");
+    //    return -1;
+    //    //exit(1);
+    //}
+    sleep(4);
     cout<<"Migration: Step-1 complete"<<endl;
     close(succsucc_fd);
 
@@ -680,13 +691,14 @@ int CCoord_server::migrationInitDown(slaveData* slave_down)
     tosend = create_json_string(sendjson);
     if(send(succ_fd, tosend.c_str(), tosend.length(), 0) == -1)
         perror("send");
-    memset(buf,0,BUFFERSIZE);
-    if ((numbytes = recv(succ_fd, buf, BUFFERSIZE, 0)) == -1) 
-    {
-        perror("recv");
-        return -1;
-        //exit(1);
-    }
+    //memset(buf,0,BUFFERSIZE);
+    //if ((numbytes = recv(succ_fd, buf, BUFFERSIZE, 0)) == -1) 
+    //{
+    //    perror("recv");
+    //    return -1;
+    //    //exit(1);
+    //}
+    sleep(4);
     cout<<"Migration: Step-2 complete"<<endl;
     close(succ_fd);
 
@@ -701,16 +713,16 @@ int CCoord_server::migrationInitDown(slaveData* slave_down)
     tosend = create_json_string(sendjson);
     if(send(succ_fd, tosend.c_str(), tosend.length(), 0) == -1)
         perror("send");
-    memset(buf,0,BUFFERSIZE);
-    if ((numbytes = recv(succsucc_fd, buf, BUFFERSIZE, 0)) == -1) 
-    {
-        perror("recv");
-        return -1;
-        //exit(1);
-    }
+    //memset(buf,0,BUFFERSIZE);
+    //if ((numbytes = recv(succsucc_fd, buf, BUFFERSIZE, 0)) == -1) 
+    //{
+    //    perror("recv");
+    //    return -1;
+    //    //exit(1);
+    //}
+    sleep(4);
     cout<<"Migration: Step-3 complete"<<endl;
     close(succ_fd);
-    treeRoot = deleteBST(&treeRoot, slave_down->hashvalue);
     
 }
 
@@ -724,10 +736,10 @@ int CCoord_server::migrationInitUp(slaveData* slave_up)
     if(pre==NULL)
         pre = findMaximum(treeRoot);
     if(succ==NULL)
-        succ = bst_upperBound(treeRoot, 0);
+        succ = findMinimum(treeRoot);
     findSuccessor(treeRoot, succsucc, succ->data.hashvalue);
     if(succsucc==NULL)
-        succsucc = bst_upperBound(treeRoot, 0);
+        succsucc = findMinimum(treeRoot);
 
     int pred_fd, succ_fd, succsucc_fd;
 
@@ -956,8 +968,6 @@ void CCoord_server::findSuccessor(bstNode* root, bstNode*& succ, Fnv32_t key)
 	{
 		if (root->rightchild)
 			succ = findMinimum(root->rightchild);
-        else
-            succ = NULL;
 	}
 	else if (key < root->data.hashvalue)
 	{
@@ -967,7 +977,19 @@ void CCoord_server::findSuccessor(bstNode* root, bstNode*& succ, Fnv32_t key)
 	else
 		findSuccessor(root->rightchild, succ, key);
 }
+void CCoord_server::inorder(bstNode *root)
+{
+    if(root==NULL){
+        
+        return;
+    }
+    else{
 
+        inorder(root->leftchild);
+        cout << root->data.hashvalue << "/" << root->data.IPaddr << ", ";
+        inorder(root->rightchild);
+    }
+}
 int main()
 {
     CCoord_server obj;
