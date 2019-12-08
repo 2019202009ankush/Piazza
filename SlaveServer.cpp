@@ -364,10 +364,11 @@ int send_map(int sock_fd, string what)  //return 1 on success
         cout<<"Error in Send_Map msg format"<<endl;
         return 0;
     }
-    map_to_send.erase(map_to_send.end()-1);
+    if(map_to_send.size()>0)
+        map_to_send.erase(map_to_send.end()-1);
     if(map_to_send.size()==0)
     {
-        map_to_send="1";
+        map_to_send+="1";
     }
     const void * data_send = map_to_send.c_str();
     int send_stat=send(sock_fd,data_send,map_to_send.length(),0);
@@ -646,6 +647,10 @@ int main()
     {
         file_fds[file_fd_count]=accept(sock_fd_listen, (struct sockaddr*)&new_connection,&new_connection_size);
         new_connection_size=sizeof(new_connection);
+        string senderPort = to_string(ntohs(((struct sockaddr_in *)&new_connection)->sin_port));
+        char input_ip[INET_ADDRSTRLEN];
+        string senderIP = inet_ntop(DOMAIN,&new_connection.sin_addr,input_ip,INET_ADDRSTRLEN);
+        cout<<"New Connection from IP:"<<senderIP<<" Port:"<<senderPort<<" FD:"<<file_fds[file_fd_count]<<endl;
         pthread_t service_request;
         pthread_attr_t attr;
         pthread_attr_init(&attr);
