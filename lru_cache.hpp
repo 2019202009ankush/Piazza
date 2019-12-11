@@ -99,7 +99,7 @@ void lruCache::putInSet(string key, string value)
 
 string lruCache::getValue(string key)
 {
-    this->getlist(key);
+    return this->getlist(key);
 }
 
 void lruCache::deleteKey(string key)

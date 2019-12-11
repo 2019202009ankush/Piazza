@@ -28,7 +28,8 @@
 /* -----Defines----- */
 #define BACKLOG 10
 #define BUFFERSIZE 512
-#define SECTODELAY 2
+#define SECTODELAY 1
+#define CACHE_ENABLE 1
 using namespace std;
 using namespace rapidjson;
 
@@ -125,6 +126,7 @@ public:
         void insertBST(bstNode** root,slaveData* newSlave);
         bstNode* bst_upperBound(bstNode* root,Fnv32_t val);
         void findPreSuc(bstNode* root, bstNode*& pre, bstNode*& suc, Fnv32_t key);
+        void findPredecessor(bstNode* root, bstNode*& pre, Fnv32_t key);
         void findSuccessor(bstNode* root, bstNode*& succ, Fnv32_t key);
         bstNode* findMinimum(bstNode* root);
         bstNode* findMaximum(bstNode* root);

@@ -252,6 +252,7 @@ int CCoord_server::slaveHandle(string slaveIP, string slavePort, int fd)
     cout<<slaveIP<<": "<<newSlave->hashvalue<<endl;
     insertBST(&treeRoot,newSlave);
     inorder(treeRoot);
+    cout<<endl;
     std::pair<std::map<string,slaveData>::iterator,bool> ret;
     ret =  slavemap.insert(make_pair(newSlave->IPaddr, *newSlave));
     
@@ -395,15 +396,17 @@ int CCoord_server::getData(string bufstr, int client_fd)
     {
         targetNode = findMinimum(treeRoot);
     }
-    /*
+#if CACHE_ENABLE  
     string cachestr = targetNode->data.cache.getValue(key);
+
     if(cachestr != "none")
     {
-        if(send(client_fd, cachestr.c_str(), cachestr.length(), 0) == -1)
+        string response = "{\n\t\"value\":\""+cachestr+"\"\n}";
+        if(send(client_fd, response.c_str(), response.length(), 0) == -1)
             perror("send");
     }
     else
-    */
+#endif
     {
         if(targetNode->data.isActive)
         {
@@ -430,7 +433,7 @@ int CCoord_server::getData(string bufstr, int client_fd)
 int CCoord_server::putData(string bufstr, int client_fd)
 {
     bstNode* primary = put_update_delete_handle(bufstr, client_fd);
-    /*
+#if CACHE_ENABLE
     if(primary != NULL)
     {
         Document document_p;
@@ -448,13 +451,13 @@ int CCoord_server::putData(string bufstr, int client_fd)
     {
         cout<<"Primary node NULL for putting data"<<endl;
     }
-    */
+#endif
 }
 
 int CCoord_server::deleteData(string bufstr, int client_fd)
 {
     bstNode* primary = put_update_delete_handle(bufstr, client_fd);
-    /*
+#if CACHE_ENABLE
     if(primary != NULL)
     {
         Document document_p;
@@ -468,13 +471,13 @@ int CCoord_server::deleteData(string bufstr, int client_fd)
     {
         cout<<"Primary node NULL for deleting data"<<endl;
     }
-    */
+#endif
 }
 
 int CCoord_server::updateData(string bufstr, int client_fd)
 {
     bstNode* primary = put_update_delete_handle(bufstr, client_fd);
-    /*
+#if CACHE_ENABLE
     if(primary !=NULL)
     {
         Document document_p;
@@ -493,7 +496,7 @@ int CCoord_server::updateData(string bufstr, int client_fd)
     {
         cout<<"Primary node NULL for updating data"<<endl;
     }
-    */
+#endif
 }   
 
 int CCoord_server::connect_to_slave(slaveData* slave)
@@ -542,9 +545,9 @@ int CCoord_server::connect_to_slave(slaveData* slave)
         fprintf(stderr, "client: failed to connect\n");
         return -2;
     }
-
+    //string senderPort = to_string(ntohs(((struct sockaddr_in *)p->ai_addr)->sin_port));
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr),s, sizeof s);
-    printf("client: connecting to %s\n", s);
+    printf("client: connecting to %s:%s\n", s, server_port);
 
     freeaddrinfo(servinfo); // all done with this structure
     
@@ -645,17 +648,21 @@ int CCoord_server::migrationInitDown(slaveData* slave_down)
     bstNode* pre=NULL, *succ=NULL, *succsucc=NULL;
     char buf[BUFFERSIZE];
     int numbytes;
-    findPreSuc(treeRoot, pre, succ, slave_down->hashvalue);
+    //findPreSuc(treeRoot, pre, succ, slave_down->hashvalue);
+    findPredecessor(treeRoot, pre, slave_down->hashvalue);
     if(pre==NULL)
         pre = findMaximum(treeRoot);
+    treeRoot = deleteBST(&treeRoot, slave_down->hashvalue);
+    succ = bst_upperBound(treeRoot, slave_down->hashvalue);
     if(succ==NULL)
         succ = findMinimum(treeRoot);
-    treeRoot = deleteBST(&treeRoot, slave_down->hashvalue);
     findSuccessor(treeRoot, succsucc, succ->data.hashvalue);
     if(succsucc==NULL)
         succsucc = findMinimum(treeRoot);
 
-    cout<<"pred: "<<pre->data.IPaddr<<" succ : "<<succ->data.IPaddr<<" succsucc: "<<succsucc->data.IPaddr<<endl;
+    cout<<"pred: "<<pre->data.IPaddr;
+    cout<<" succ : "<<succ->data.IPaddr;
+    cout<<" succsucc: "<<succsucc->data.IPaddr<<endl;
     int pred_fd, succ_fd, succsucc_fd;
 
 
@@ -803,8 +810,11 @@ string CCoord_server::create_json_string(vector<pair<string,string>> &data)
 
 Fnv32_t CCoord_server::hashSlave(slaveData* slave)
 {
-    char* str = new char[slave->IPaddr.length()+1];
-    strcpy(str, slave->IPaddr.c_str());
+    string ip_port = slave->IPaddr+slave->portnum;
+    char* str = new char[ip_port.length()+1];
+    strcpy(str, ip_port.c_str());
+    //char* str = new char[slave->IPaddr.length()+1];
+    //strcpy(str, slave->IPaddr.c_str());
     Fnv32_t hash_val = fnv_32_str(str, FNV1_32_INIT);
     return hash_val;
 }
@@ -878,7 +888,7 @@ bstNode* CCoord_server::deleteBST(bstNode** root,Fnv32_t key)
         struct bstNode* temp = minValueNode((*root)->rightchild); 
   
         // Copy the inorder successor's content to this node 
-        (*root)->data.hashvalue = temp->data.hashvalue; 
+        (*root)->data = temp->data; 
   
         // Delete the inorder successor 
         (*root)->rightchild = deleteBST(&((*root)->rightchild), temp->data.hashvalue); 
@@ -955,6 +965,39 @@ bstNode* CCoord_server::findMaximum(bstNode* root)
 		root = root->rightchild;
 	return root;
 }
+
+void CCoord_server::findPredecessor(bstNode* root, bstNode*& pre, Fnv32_t key)
+{
+    // base case
+    if (root == NULL) {
+        pre = NULL;
+        return;
+    }
+ 
+    // if node with key's value is found, the predecessor is maximum value
+    // node in its left subtree (if any)
+    if (root->data.hashvalue == key)
+    {
+        if (root->leftchild)
+            pre = findMaximum(root->leftchild);
+    }
+ 
+    // if given key is less than the root node, recur for left subtree
+    else if (key < root->data.hashvalue)
+    {
+        findPredecessor(root->leftchild, pre, key);
+    }
+ 
+    // if given key is more than the root node, recur for right subtree
+    else
+    {
+        // update predecessor to current node before recursing 
+        // in right subtree
+        pre = root;
+        findPredecessor(root->rightchild, pre, key);
+    }
+}
+
 void CCoord_server::findSuccessor(bstNode* root, bstNode*& succ, Fnv32_t key)
 {
 	// base case
